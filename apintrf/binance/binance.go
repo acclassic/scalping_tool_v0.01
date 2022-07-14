@@ -31,22 +31,37 @@ type WsRequest struct {
 }
 
 func (req WsRequest) Send_req(wsConn *websocket.Conn) {
-	jsonReq, _ := json.Marshal(req)
-	_, err := wsConn.Write(jsonReq)
+	err := websocket.JSON.Send(wsConn, req)
+
 	if err != nil {
 		apintrf.Log_err().Printf("Error sending request to WS: %s", err)
 	}
 }
 
+type WsStream struct {
+	Stream string    `json:"stream"`
+	Data   BookDepth `json:"data"`
+}
+
+type BookDepth struct {
+	Bids [][]json.Number `json:"bids"`
+	Asks [][]json.Number `json:"asks"`
+}
+
+type Order struct {
+	Price string
+	Qty   string
+}
+
 func Listen_ws(wsConn *websocket.Conn, markets TrdStradegy) {
-	var wsResp = make([]byte, 1024)
+	var wsResp WsStream
 	for {
-		_, err := wsConn.Read(wsResp)
+		err := websocket.JSON.Receive(wsConn, &wsResp)
 		if err != nil {
 			apintrf.Log_err().Panicf("Error reading request from WS: %s", err)
 		}
-		handle_resp(wsResp, markets)
-		//fmt.Printf("%s\n", wsResp)
+		fmt.Println(wsResp)
+		//handle_resp(wsResp, markets)
 	}
 }
 
