@@ -1,11 +1,9 @@
 package binance
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 )
 
 type orderPrice struct {
@@ -13,7 +11,7 @@ type orderPrice struct {
 	price float64
 }
 
-//TODO implement method with mutex lock to update the MPrices
+//Update order price for market.
 func (op *orderPrice) update_price(price float64) {
 	op.mu.Lock()
 	op.price = price
@@ -25,25 +23,18 @@ var buyMarket orderPrice
 var sellMarket orderPrice
 
 func resp_hander(resp *WsStream, markets TrdMarkets) {
-	fmt.Println(time.Now())
-	fmt.Println(resp)
 	//TODO change trim to split after @ and take first slice
 	markt := strings.TrimSuffix(resp.Stream, "@depth5")
 	switch markt {
 	case markets.BuyMarket:
-		//something
+		price, _ := resp.Data.Asks[2][0].Float64()
+		buyMarket.update_price(price)
 	case markets.SellMarket:
-		//price, _ := resp.Data.Bids[2][0].Float64()
+		fPrice, _ := resp.Data.Bids[2][0].Float64()
+		price := fx_conv(fPrice)
+		sellMarket.update_price(price)
 	}
 }
-
-type order struct {
-	buyMPrice  float64
-	sellMPrice float64
-}
-
-//type orderQueue [][]order
-var orderQueue = make(chan order, 10)
 
 // TODO use global var or not?
 var avgFxRate = 1.0
@@ -61,7 +52,4 @@ func spread_calc(baseP, quoteP float64) bool {
 	} else {
 		return false
 	}
-}
-
-func buy_handler(market [][]json.Number) {
 }

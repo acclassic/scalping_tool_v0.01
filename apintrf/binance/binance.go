@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"swap-trader/apintrf"
+	"sync"
 
 	"golang.org/x/net/websocket"
 )
@@ -82,7 +83,7 @@ func Listen_ws(wsConn *websocket.Conn, markets TrdMarkets) {
 		if err != nil {
 			apintrf.Log_err().Panicf("Error reading request from WS: %s", err)
 		}
-		//go resp_hander(&wsResp, markets)
+		go resp_hander(&wsResp, markets)
 	}
 }
 
@@ -91,19 +92,34 @@ type TrdMarkets struct {
 	SellMarket string
 }
 
+func (markets TrdMarkets) init_order_price(market string, api *ApiConfig, wg *sync.WaitGroup) {
+	defer wg.Done()
+	switch market {
+	case "buy":
+		oBook := api.get_order_book(markets.BuyMarket)
+		price, _ := oBook.Asks[2][0].Float64()
+		buyMarket.update_price(price)
+	case "sell":
+		oBook := api.get_order_book(markets.SellMarket)
+		price, _ := oBook.Bids[2][0].Float64()
+		sellMarket.update_price(price)
+	}
+}
+
 func (markets TrdMarkets) Exec_strat(wsConn *websocket.Conn, apiConf *ApiConfig) {
 	var params []string
-	params = append(params, fmt.Sprintf("%s@depth10", markets.BuyMarket))
-	params = append(params, fmt.Sprintf("%s@depth10", markets.SellMarket))
-	buyMBook := apiConf.get_order_book(markets.BuyMarket)
-	//TODO implement func to get directly n price of slice
-	buyPrice, _ := buyMBook.Asks[2][0].Float64()
-	buyMarket.update_price(buyPrice)
+	params = append(params, fmt.Sprintf("%s@depth5", markets.BuyMarket))
+	params = append(params, fmt.Sprintf("%s@depth5", markets.SellMarket))
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go markets.init_order_price("buy", apiConf, &wg)
+	go markets.init_order_price("sell", apiConf, &wg)
 	req := WsRequest{
 		Method: "SUBSCRIBE",
 		Params: params,
 		Id:     1,
 	}
 	req.Send_req(wsConn)
+	wg.Wait()
 	Listen_ws(wsConn, markets)
 }
