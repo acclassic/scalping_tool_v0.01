@@ -98,11 +98,11 @@ func (markets TrdMarkets) init_order_price(market string, api *ApiConfig, wg *sy
 	case "buy":
 		oBook := api.get_order_book(markets.BuyMarket)
 		price, _ := oBook.Asks[2][0].Float64()
-		buyMarket.update_price(price)
+		buyMarketP.update_price(price)
 	case "sell":
 		oBook := api.get_order_book(markets.SellMarket)
 		price, _ := oBook.Bids[2][0].Float64()
-		sellMarket.update_price(price)
+		sellMarketP.update_price(price)
 	}
 }
 

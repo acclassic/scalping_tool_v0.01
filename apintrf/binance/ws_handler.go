@@ -4,7 +4,11 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 )
+
+var buyMarketP orderPrice
+var sellMarketP orderPrice
 
 type orderPrice struct {
 	mu    sync.Mutex
@@ -19,21 +23,30 @@ func (op *orderPrice) update_price(price float64) {
 	fmt.Println(op.price)
 }
 
-var buyMarket orderPrice
-var sellMarket orderPrice
-
 func resp_hander(resp *WsStream, markets TrdMarkets) {
 	//TODO change trim to split after @ and take first slice
 	markt := strings.TrimSuffix(resp.Stream, "@depth5")
 	switch markt {
 	case markets.BuyMarket:
 		price, _ := resp.Data.Asks[2][0].Float64()
-		buyMarket.update_price(price)
+		buyMarketP.update_price(price)
 	case markets.SellMarket:
 		fPrice, _ := resp.Data.Bids[2][0].Float64()
 		price := fx_conv(fPrice)
-		sellMarket.update_price(price)
+		sellMarketP.update_price(price)
 	}
+	if spread_calc(buyMarketP.price, sellMarketP.price) {
+		go buy_handler()
+	}
+}
+
+var buyCh = make(chan bool, 1)
+
+func buy_handler() {
+	buyCh <- true
+	fmt.Println("buy exec")
+	time.Sleep(time.Second)
+	<-buyCh
 }
 
 // TODO use global var or not?
@@ -46,10 +59,12 @@ func fx_conv(price float64) float64 {
 // TODO use global var or not?
 var avgSpread = 2.0
 
+//TODO unquote block. For test reasons this func returns always true.
 func spread_calc(baseP, quoteP float64) bool {
-	if quoteP-baseP >= avgSpread {
-		return true
-	} else {
-		return false
-	}
+	return true
+	//if quoteP-baseP >= avgSpread {
+	//	return true
+	//} else {
+	//	return false
+	//}
 }
