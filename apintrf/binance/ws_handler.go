@@ -44,8 +44,8 @@ var buyCh = make(chan bool, 1)
 
 func buy_handler() {
 	buyCh <- true
-	fmt.Println("buy exec")
-	time.Sleep(time.Second)
+	get_funds("BTC")
+	time.Sleep(time.Minute)
 	<-buyCh
 }
 

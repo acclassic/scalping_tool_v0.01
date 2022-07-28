@@ -13,10 +13,11 @@ func main() {
 	//ApiKey:    "v5eVCtrMZoAaJveVQwOG9615Zq558h9Rt3gHmf2C2gmA0lrmVzLRWUhW3o5JCoq3",
 	//SecretKey: "7NYBhdsJaPE2tXxovS2kklYXnfc8dMf6kTYA5W5I1GJ1VuI6zIvg4iTfXN6Tra19",
 	apiConfig := binance.ApiConfig{
-		ApiKey:    "v5eVCtrMZoAaJveVQwOG9615Zq558h9Rt3gHmf2C2gmA0lrmVzLRWUhW3o5JCoq3",
-		SecretKey: "7NYBhdsJaPE2tXxovS2kklYXnfc8dMf6kTYA5W5I1GJ1VuI6zIvg4iTfXN6Tra19",
-		Address:   "https://testnet.binance.vision/api",
+		ApiKey:    "RJOKv5gORTbamrrlbuy18M5tSQ54plDxw30oZksoikOphSuyTUwyboewMTqZa7UE",
+		SecretKey: "wXU9BitdNlPoYOkGACRNN6ZaVOJzfTR0uKCgwPNpKkeV0rqhaPo7Lzdh13LQRksu",
+		Address:   "https://testnet.binance.vision",
 	}
+	binance.Set_api_config(&apiConfig)
 	//req := binance.WsRequest{
 	//	Method: "SUBSCRIBE",
 	//	Params: []string{
@@ -30,5 +31,5 @@ func main() {
 		BuyMarket:  "btcusdt",
 		SellMarket: "bnbusdt",
 	}
-	btcUahStrat.Exec_strat(wsConn, &apiConfig)
+	btcUahStrat.Exec_strat(wsConn)
 }

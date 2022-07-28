@@ -3,8 +3,6 @@ package binance
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/url"
 	"strings"
 	"swap-trader/apintrf"
 	"sync"
@@ -26,29 +24,35 @@ func (wConfig *WsConfig) Connect_ws() *websocket.Conn {
 	return wsConn
 }
 
+var api *ApiConfig
+
 type ApiConfig struct {
 	ApiKey    string
 	SecretKey string
 	Address   string
 }
 
-func (a *ApiConfig) get_order_book(symbol string) BookDepth {
-	u := fmt.Sprintf("%s/v3/depth", a.Address)
-	rUrl, _ := url.Parse(u)
-	qParams := url.Values{}
-	qParams.Add("symbol", strings.ToUpper(symbol))
-	qParams.Add("limit", "10")
-	rUrl.RawQuery = qParams.Encode()
-	resp, err := http.Get(rUrl.String())
+func Set_api_config(config *ApiConfig) {
+	api = config
+}
+
+func get_order_book(symbol string) BookDepth {
+	qParams := queryParams{"symbol": strings.ToUpper(symbol), "limit": "10"}
+	resp := get_req("/api/v3/depth", qParams)
 	defer resp.Body.Close()
-	if err != nil {
-		//TODO see if err needs to cache and if so what to do.
-		fmt.Println(err)
-	}
 	var orderBook BookDepth
 	dec := json.NewDecoder(resp.Body)
 	dec.Decode(&orderBook)
 	return orderBook
+}
+
+func get_funds(asset string) {
+	resp := sGet_req("/api/v3/account", nil)
+	defer resp.Body.Close()
+	var i interface{}
+	dec := json.NewDecoder(resp.Body)
+	dec.Decode(&i)
+	fmt.Println(i)
 }
 
 type WsRequest struct {
@@ -92,28 +96,28 @@ type TrdMarkets struct {
 	SellMarket string
 }
 
-func (markets TrdMarkets) init_order_price(market string, api *ApiConfig, wg *sync.WaitGroup) {
+func (markets TrdMarkets) init_order_price(market string, wg *sync.WaitGroup) {
 	defer wg.Done()
 	switch market {
 	case "buy":
-		oBook := api.get_order_book(markets.BuyMarket)
+		oBook := get_order_book(markets.BuyMarket)
 		price, _ := oBook.Asks[2][0].Float64()
 		buyMarketP.update_price(price)
 	case "sell":
-		oBook := api.get_order_book(markets.SellMarket)
+		oBook := get_order_book(markets.SellMarket)
 		price, _ := oBook.Bids[2][0].Float64()
 		sellMarketP.update_price(price)
 	}
 }
 
-func (markets TrdMarkets) Exec_strat(wsConn *websocket.Conn, apiConf *ApiConfig) {
+func (markets TrdMarkets) Exec_strat(wsConn *websocket.Conn) {
 	var params []string
 	params = append(params, fmt.Sprintf("%s@depth5", markets.BuyMarket))
 	params = append(params, fmt.Sprintf("%s@depth5", markets.SellMarket))
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go markets.init_order_price("buy", apiConf, &wg)
-	go markets.init_order_price("sell", apiConf, &wg)
+	go markets.init_order_price("buy", &wg)
+	go markets.init_order_price("sell", &wg)
 	req := WsRequest{
 		Method: "SUBSCRIBE",
 		Params: params,
