@@ -10,20 +10,26 @@ func main() {
 	//	WsAddress: "wss://testnet.binance.vision/stream",
 	//}
 	wsConfig := binance.WsConfig{
-		WsOrigin:  "wss://stream.binance.com:9443",
+		WsOrigin:  "wss://stream.binance.com",
 		WsAddress: "wss://stream.binance.com:9443/stream",
 	}
 	wsConn := wsConfig.Connect_ws()
+	//apiConfig := binance.ApiConfig{
+	//	ApiKey:    "RJOKv5gORTbamrrlbuy18M5tSQ54plDxw30oZksoikOphSuyTUwyboewMTqZa7UE",
+	//	SecretKey: "wXU9BitdNlPoYOkGACRNN6ZaVOJzfTR0uKCgwPNpKkeV0rqhaPo7Lzdh13LQRksu",
+	//	Address:   "https://testnet.binance.vision",
+	//}
 	apiConfig := binance.ApiConfig{
 		ApiKey:    "RJOKv5gORTbamrrlbuy18M5tSQ54plDxw30oZksoikOphSuyTUwyboewMTqZa7UE",
 		SecretKey: "wXU9BitdNlPoYOkGACRNN6ZaVOJzfTR0uKCgwPNpKkeV0rqhaPo7Lzdh13LQRksu",
-		Address:   "https://testnet.binance.vision",
+		Address:   "https://api.binance.com",
 	}
 	binance.Set_api_config(&apiConfig)
-	btcUahStrat := binance.TrdStrategy{
-		Market:     "btcusdt",
-		SpreadBase: 5,
-		TrdAmount:  10.0,
+	trdStrat := binance.TrdStratConfig{
+		BuyMarket:  "BNBEUR",
+		SellMarket: "BNBUSDT",
+		ConvMarket: "EURUSDT",
+		TrdRate:    0.1,
 	}
-	btcUahStrat.Exec_strat(wsConn)
+	trdStrat.Exec_strat(wsConn)
 }
