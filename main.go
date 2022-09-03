@@ -32,4 +32,5 @@ func main() {
 		TrdRate:    0.1,
 	}
 	trdStrat.Exec_strat(wsConn)
+	binance.App_handler(trdStrat, wsConfig)
 }

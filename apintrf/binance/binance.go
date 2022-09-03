@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"swap-trader/apintrf"
+	"sync"
+	"time"
 
 	"golang.org/x/net/websocket"
 )
@@ -42,9 +44,12 @@ const (
 	CONV = "CONV"
 )
 
+var exchangeInfo ExInfo
+
 type ExInfo struct {
 	RateLimits []RLimits  `json:"rateLimits"`
 	Symbols    []MarketEx `json:"symbols"`
+	mu         sync.RWMutex
 }
 
 type RLimits struct {
@@ -75,7 +80,7 @@ type ExFilters struct {
 	MaxNumOrders  int     `json:"maxNumOrders,string"`
 }
 
-func get_ex_info(buyMarket, sellMarket, convMarket string) {
+func set_ex_info(buyMarket, sellMarket, convMarket string) ExInfo {
 	symbols := fmt.Sprintf(`["%s","%s","%s"]`, buyMarket, sellMarket, convMarket)
 	qParams := queryParams{
 		"symbols": symbols,
@@ -84,7 +89,27 @@ func get_ex_info(buyMarket, sellMarket, convMarket string) {
 	defer resp.Body.Close()
 	var exInfo ExInfo
 	json.NewDecoder(resp.Body).Decode(&exInfo)
-	fmt.Println(exInfo)
+	return exInfo
+	//Convert to map and append to symbolsInfo
+	//for _, symbol := range exInfo.Symbols {
+	//	sMap := map[string][]map[string]ExFilters{
+	//		symbol.Symbol: []map[string]ExFilters{},
+	//	}
+	//	symbolsInfo = append(symbolsInfo, sMap)
+	//	for _, filter := range symbol.Filters {
+	//		fMap := map[string]ExFilters{
+	//			filter.FType: filter,
+	//		}
+	//		sMap[symbol.Symbol] = append(sMap[symbol.Symbol], fMap)
+	//	}
+	//}
+	////Conver to map and append to rateLimits
+	//for _, v := range exInfo.RateLimits {
+	//	rMap := map[string]RLimits{
+	//		v.RType: v,
+	//	}
+	//	exRateLimits = append(exRateLimits, rMap)
+	//}
 }
 
 type BookDepth struct {
@@ -130,6 +155,10 @@ func get_funds(asset string) (float64, error) {
 type order struct {
 	buyAmnt  float64
 	sellAmnt float64
+}
+
+func format_price(price float64) {
+	//Check price filter
 }
 
 func market_order(symbol, side string, qty float64) {
@@ -251,22 +280,30 @@ type TrdStratConfig struct {
 }
 
 func (strat TrdStratConfig) Exec_strat(wsConn *websocket.Conn) {
+	fmt.Println("exec func!!")
+	return
+	//TODO implement HTTP 429 for exes limits
+	//TODO implement exInfo ticker 24h and other counters
 	//Set TrdStrategy config
 	trdStrategy = strat
+	//Set ExInfos
+	set_ex_info(strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
+	//TODO implement goroutine
 	//Init Maret prices
 	//init_order_price(BUY, strat.BuyMarket, 1)
 	//init_order_price(SELL, strat.SellMarket, 1)
 	//init_order_price(CONV, strat.ConvMarket, 2)
-	//Init market prices
-	//var params []string
-	//params = append(params, fmt.Sprintf("%s@depth5", strat.BuyMarket))
-	//params = append(params, fmt.Sprintf("%s@depth5", strat.SellMarket))
-	//var wg sync.WaitGroup
-	//wg.Add(2)
-	//go strat.init_order_price("buy", &wg)
-	//wg.Wait()
 	//Subscribe to WS book stream
-	//get_ex_info(strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
 	subscribeStream(wsConn, strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
+	//	fmt.Println(exInfos)
 	//Listen_ws(wsConn)
+}
+
+func App_handler(trdConfig TrdStratConfig, wsConf WsConfig) {
+	d := time.ParseDuration("24h")
+	ticker := time.Tick(d)
+	for t := range ticker {
+		ws := wsConf.Connect_ws()
+		trdConfig.Exec_strat(ws)
+	}
 }
