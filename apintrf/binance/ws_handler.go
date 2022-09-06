@@ -62,6 +62,7 @@ func resp_hander(resp *WsStream) {
 }
 
 func trd_signal() bool {
+	//TODO check this again. Wierd stuff at the begining of the app
 	buyPrice := buyMarketP.get_price()
 	sellPrice := sellMarketP.get_price()
 	convPrice := convMarketP.get_price()

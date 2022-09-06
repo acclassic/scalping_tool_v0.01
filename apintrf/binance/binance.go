@@ -44,12 +44,93 @@ const (
 	CONV = "CONV"
 )
 
-var exchangeInfo ExInfo
+var exLimitsCtrs limitsCtrs
+
+type limitsCtrs struct {
+	reqWeight counter
+	rawReq    counter
+	maxOrders counter
+	orders    counter
+}
+
+func rLimits_handler(exLimits limitsCtrs) {
+	//Reset counters after Tick
+	for {
+		select {
+		case <-exLimits.reqWeight.ticker:
+			exLimits.reqWeight.update_counter(exLimitsCtrs.reqWeight.resetCount)
+		case <-exLimits.orders.ticker:
+			exLimits.orders.update_counter(exLimitsCtrs.orders.resetCount)
+		case <-exLimits.maxOrders.ticker:
+			exLimits.maxOrders.update_counter(exLimitsCtrs.maxOrders.resetCount)
+		case <-exLimits.rawReq.ticker:
+			exLimits.rawReq.update_counter(exLimitsCtrs.rawReq.resetCount)
+		}
+	}
+}
+
+type counter struct {
+	count      int
+	resetCount int
+	ticker     <-chan time.Time
+	mu         sync.RWMutex
+}
+
+func (c *counter) init_counter(n int, interval time.Duration) {
+	c.count = n
+	c.resetCount = n
+	c.ticker = time.Tick(interval)
+}
+
+func (c *counter) update_counter(n int) {
+	c.mu.Lock()
+	c.count = n
+	c.mu.Unlock()
+}
+
+func parse_limit_duration(n int, unit string) time.Duration {
+	var u string
+	switch unit {
+	case "SECOND":
+		u = "s"
+	case "MINUTE":
+		u = "m"
+	case "DAY":
+		d := time.Duration(n*24) * time.Hour
+		return d
+	}
+	duration := fmt.Sprintf("%d%s", n, u)
+	d, _ := time.ParseDuration(duration)
+	return d
+}
+
+func set_rLimits(rLimits []RLimits) {
+	//Init counters and create tickers
+	for _, limit := range rLimits {
+		switch limit.RType {
+		case "REQUEST_WEIGHT":
+			interval := parse_limit_duration(limit.IntervalNum, limit.Interval)
+			exLimitsCtrs.reqWeight.init_counter(limit.Limit, interval)
+		case "ORDERS":
+			if limit.Interval != "DAY" {
+				interval := parse_limit_duration(limit.IntervalNum, limit.Interval)
+				exLimitsCtrs.orders.init_counter(limit.Limit, interval)
+			} else if limit.Interval == "DAY" {
+				interval := parse_limit_duration(limit.IntervalNum, limit.Interval)
+				exLimitsCtrs.maxOrders.init_counter(limit.Limit, interval)
+			}
+		case "RAW_REQUESTS":
+			interval := parse_limit_duration(limit.IntervalNum, limit.Interval)
+			exLimitsCtrs.rawReq.init_counter(limit.Limit, interval)
+		}
+	}
+}
+
+var symbolsFilters []MarketEx
 
 type ExInfo struct {
 	RateLimits []RLimits  `json:"rateLimits"`
 	Symbols    []MarketEx `json:"symbols"`
-	mu         sync.RWMutex
 }
 
 type RLimits struct {
@@ -80,7 +161,7 @@ type ExFilters struct {
 	MaxNumOrders  int     `json:"maxNumOrders,string"`
 }
 
-func set_ex_info(buyMarket, sellMarket, convMarket string) ExInfo {
+func get_ex_info(buyMarket, sellMarket, convMarket string) ExInfo {
 	symbols := fmt.Sprintf(`["%s","%s","%s"]`, buyMarket, sellMarket, convMarket)
 	qParams := queryParams{
 		"symbols": symbols,
@@ -90,26 +171,6 @@ func set_ex_info(buyMarket, sellMarket, convMarket string) ExInfo {
 	var exInfo ExInfo
 	json.NewDecoder(resp.Body).Decode(&exInfo)
 	return exInfo
-	//Convert to map and append to symbolsInfo
-	//for _, symbol := range exInfo.Symbols {
-	//	sMap := map[string][]map[string]ExFilters{
-	//		symbol.Symbol: []map[string]ExFilters{},
-	//	}
-	//	symbolsInfo = append(symbolsInfo, sMap)
-	//	for _, filter := range symbol.Filters {
-	//		fMap := map[string]ExFilters{
-	//			filter.FType: filter,
-	//		}
-	//		sMap[symbol.Symbol] = append(sMap[symbol.Symbol], fMap)
-	//	}
-	//}
-	////Conver to map and append to rateLimits
-	//for _, v := range exInfo.RateLimits {
-	//	rMap := map[string]RLimits{
-	//		v.RType: v,
-	//	}
-	//	exRateLimits = append(exRateLimits, rMap)
-	//}
 }
 
 type BookDepth struct {
@@ -280,14 +341,15 @@ type TrdStratConfig struct {
 }
 
 func (strat TrdStratConfig) Exec_strat(wsConn *websocket.Conn) {
-	fmt.Println("exec func!!")
-	return
 	//TODO implement HTTP 429 for exes limits
 	//TODO implement exInfo ticker 24h and other counters
 	//Set TrdStrategy config
 	trdStrategy = strat
 	//Set ExInfos
-	set_ex_info(strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
+	exInfos := get_ex_info(strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
+	symbolsFilters = exInfos.Symbols
+	set_rLimits(exInfos.RateLimits)
+	go rLimits_handler(exLimitsCtrs)
 	//TODO implement goroutine
 	//Init Maret prices
 	//init_order_price(BUY, strat.BuyMarket, 1)
@@ -296,14 +358,5 @@ func (strat TrdStratConfig) Exec_strat(wsConn *websocket.Conn) {
 	//Subscribe to WS book stream
 	subscribeStream(wsConn, strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
 	//	fmt.Println(exInfos)
-	//Listen_ws(wsConn)
-}
-
-func App_handler(trdConfig TrdStratConfig, wsConf WsConfig) {
-	d := time.ParseDuration("24h")
-	ticker := time.Tick(d)
-	for t := range ticker {
-		ws := wsConf.Connect_ws()
-		trdConfig.Exec_strat(ws)
-	}
+	Listen_ws(wsConn)
 }
