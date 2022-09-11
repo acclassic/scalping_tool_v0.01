@@ -1,6 +1,7 @@
 package binance
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,8 @@ import (
 
 	"golang.org/x/net/websocket"
 )
+
+var cancelCh chan time.Duration
 
 type WsConfig struct {
 	WsOrigin  string
@@ -38,6 +41,7 @@ func Set_api_config(config *ApiConfig) {
 	api = config
 }
 
+//TODO change to custom type and use that as func param
 const (
 	BUY  = "BUY"
 	SELL = "SELL"
@@ -47,10 +51,10 @@ const (
 var exLimitsCtrs limitsCtrs
 
 type limitsCtrs struct {
-	reqWeight counter
-	rawReq    counter
-	maxOrders counter
-	orders    counter
+	reqWeight rCounter
+	rawReq    rCounter
+	maxOrders rCounter
+	orders    rCounter
 }
 
 func rLimits_handler(exLimits limitsCtrs) {
@@ -69,23 +73,29 @@ func rLimits_handler(exLimits limitsCtrs) {
 	}
 }
 
-type counter struct {
+type rCounter struct {
 	count      int
 	resetCount int
 	ticker     <-chan time.Time
 	mu         sync.RWMutex
 }
 
-func (c *counter) init_counter(n int, interval time.Duration) {
+func (c *rCounter) init_counter(n int, interval time.Duration) {
 	c.count = n
 	c.resetCount = n
 	c.ticker = time.Tick(interval)
 }
 
-func (c *counter) update_counter(n int) {
+func (c *rCounter) update_counter(n int) {
 	c.mu.Lock()
-	c.count = n
+	c.count = c.count - n
 	c.mu.Unlock()
+}
+
+func (c *rCounter) get_counter() int {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.count
 }
 
 func parse_limit_duration(n int, unit string) time.Duration {
@@ -219,7 +229,7 @@ type order struct {
 }
 
 func format_price(price float64) {
-	//Check price filter
+	//TODO implement func to format price with filters
 }
 
 func market_order(symbol, side string, qty float64) {
@@ -291,17 +301,33 @@ func subscribeStream(wsConn *websocket.Conn, markets ...string) {
 	wsReq.Send_req(wsConn)
 }
 
+type TT struct {
+	Data T `json:"data"`
+}
+type T struct {
+	S  int64  `json:"E"`
+	SS string `json:"e"`
+}
+
 // Get order book and cache result. Then listen to the WS for new orders and send result to the reps handler.
-func Listen_ws(wsConn *websocket.Conn) {
-	//ticker := time.NewTicker(5 * time.Second)
-	//go set_avgSpread(ticker)
+func Listen_ws(ctx context.Context, wsConn *websocket.Conn) {
+	//Init stratStatus for control
+	stratStatus.init()
 	var wsResp WsStream
+	//TODO add ctx value origin. Not needed but good
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	//go func() {
+	//	time.Sleep(5 * time.Second)
+	//	fmt.Println("sleep func run")
+	//	stratStatus.cancelCh <- time.Duration(20) * time.Second
+	//}()
 	for {
 		err := websocket.JSON.Receive(wsConn, &wsResp)
 		if err != nil {
 			apintrf.Log_err().Panicf("Error reading request from WS: %s", err)
 		}
-		go resp_hander(&wsResp)
+		go resp_hander(ctx, &wsResp)
 	}
 }
 
@@ -341,6 +367,7 @@ type TrdStratConfig struct {
 }
 
 func (strat TrdStratConfig) Exec_strat(wsConn *websocket.Conn) {
+	ctx := context.Background()
 	//TODO implement HTTP 429 for exes limits
 	//TODO implement exInfo ticker 24h and other counters
 	//Set TrdStrategy config
@@ -356,7 +383,12 @@ func (strat TrdStratConfig) Exec_strat(wsConn *websocket.Conn) {
 	//init_order_price(SELL, strat.SellMarket, 1)
 	//init_order_price(CONV, strat.ConvMarket, 2)
 	//Subscribe to WS book stream
-	subscribeStream(wsConn, strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
-	//	fmt.Println(exInfos)
-	Listen_ws(wsConn)
+	//subscribeStream(wsConn, strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
+	wsReq := WsRequest{
+		Method: "SUBSCRIBE",
+		Params: []string{"btcusdt@aggTrade"},
+		Id:     1,
+	}
+	wsReq.Send_req(wsConn)
+	Listen_ws(ctx, wsConn)
 }
