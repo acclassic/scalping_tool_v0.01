@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"swap-trader/apintrf"
 	"time"
@@ -22,9 +21,6 @@ var client = http.Client{
 
 //TODO add recvWindow param for safty. See https://binance-docs.github.io/apidocs/spot/en/#signed-trade-user_data-and-margin-endpoint-security
 
-//TODO use this to check if the weight and req has to be counted against the ctrs
-type ctxOrigin string
-
 type httpReq struct {
 	method  string
 	url     string
@@ -34,7 +30,19 @@ type httpReq struct {
 	weight  int
 }
 
-func http_req_handler(ctx context.Context, reqParams httpReq) {
+func create_httpReq(method, url string, qParams queryParams, s bool, weight int) httpReq {
+	req := httpReq{
+		method:  method,
+		url:     url,
+		qParams: qParams,
+		body:    nil,
+		secure:  s,
+		weight:  weight,
+	}
+	return req
+}
+
+func http_req_handler(ctx context.Context, reqParams httpReq) *http.Response {
 	//Check if req dosen't come from trade and update counters if not.
 	if ctx.Value(ctxOrigin("origin")) == "default" {
 		weightCtr := exLimitsCtrs.reqWeight.get_counter()
@@ -44,9 +52,9 @@ func http_req_handler(ctx context.Context, reqParams httpReq) {
 			exLimitsCtrs.rawReq.update_counter(1)
 		} else {
 			//TODO log this for analytics data
-			return
 		}
 	}
+	//TODO check if needed
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	url, body := create_req_params(reqParams)
@@ -68,26 +76,13 @@ func http_req_handler(ctx context.Context, reqParams httpReq) {
 	if err != nil {
 		apintrf.Log_err().Printf("ERROR: Sending request '%s' resulted in an error. %s\n", url, err)
 	}
-	http_resp_hander(ctx, resp)
-}
-
-func http_resp_hander(ctx context.Context, resp *http.Response) {
-	//if ctx.Err() != nil {
-	//	fmt.Println(ctx.Err().Error())
-	//	return
-	//}
-	fmt.Println(resp.Status)
+	//Send resp to error_handler if not 200 or return value
 	if resp.StatusCode != 200 {
-		switch resp.StatusCode {
-		case 429:
-			if waitTime := resp.Header.Get("Retry-After"); waitTime != "" {
-				apintrf.Log_err().Fatalln("WARNING: App stopped. HTTP Resp returned empty 'Retry-After' Header. Check Binance support.")
-			} else {
-				n, _ := strconv.Atoi(waitTime)
-				d := time.Duration(n) * time.Second
-				cancelCh <- d
-			}
-		}
+		//TODO clean this up. How to handle errors from Client.Do()
+		error_handler()
+		return resp
+	} else {
+		return resp
 	}
 }
 
@@ -211,19 +206,6 @@ func set_post_header() http.Header {
 	return header
 }
 
-func error_handler(resp http.Response) {
-	switch resp.StatusCode {
-	case 429:
-		waitTime := resp.Header.Get("Retry-After")
-		if waitTime != "" {
-			apintrf.Log_err().Fatalln("WARNING: App stopped. HTTP Resp returned empty 'Retry-After' Header. Check Binance support.")
-		} else {
-			//d := time.Duration(waitTime) * time.Second
-			return
-		}
-	}
-}
-
 func check_rLimits(weight int) bool {
 	counter := exLimitsCtrs.reqWeight.get_counter()
 	if counter-weight > 0 {
@@ -231,4 +213,19 @@ func check_rLimits(weight int) bool {
 	} else {
 		return false
 	}
+}
+
+func error_handler() {
+	//if resp.StatusCode != 200 {
+	//	switch resp.StatusCode {
+	//	case 429:
+	//		if waitTime := resp.Header.Get("Retry-After"); waitTime != "" {
+	//			apintrf.Log_err().Fatalln("WARNING: App stopped. HTTP Resp returned empty 'Retry-After' Header. Check Binance support.")
+	//		} else {
+	//			n, _ := strconv.Atoi(waitTime)
+	//			d := time.Duration(n) * time.Second
+	//			cancelCh <- d
+	//		}
+	//	}
+	//}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"swap-trader/apintrf"
 	"sync"
@@ -14,6 +15,9 @@ import (
 )
 
 var cancelCh chan time.Duration
+
+//TODO use this to check if the weight and req has to be counted against the ctrs
+type ctxOrigin string
 
 type WsConfig struct {
 	WsOrigin  string
@@ -171,12 +175,13 @@ type ExFilters struct {
 	MaxNumOrders  int     `json:"maxNumOrders,string"`
 }
 
-func get_ex_info(buyMarket, sellMarket, convMarket string) ExInfo {
+func get_ex_info(ctx context.Context, buyMarket, sellMarket, convMarket string) ExInfo {
 	symbols := fmt.Sprintf(`["%s","%s","%s"]`, buyMarket, sellMarket, convMarket)
 	qParams := queryParams{
 		"symbols": symbols,
 	}
-	resp := get_req("/api/v3/exchangeInfo", qParams)
+	req := create_httpReq(http.MethodGet, "/api/v3/exchangeInfo", qParams, false, weightExInfo)
+	resp := http_req_handler(ctx, req)
 	defer resp.Body.Close()
 	var exInfo ExInfo
 	json.NewDecoder(resp.Body).Decode(&exInfo)
@@ -188,14 +193,14 @@ type BookDepth struct {
 	Asks [][]json.Number `json:"asks"`
 }
 
-func get_order_book(symbol string) BookDepth {
+func get_order_book(ctx context.Context, symbol string) BookDepth {
 	qParams := queryParams{"symbol": strings.ToUpper(symbol), "limit": "3"}
-	resp := get_req("/api/v3/depth", qParams)
+	req := create_httpReq(http.MethodGet, "/api/v3/depth", qParams, false, weightOrdBook)
+	resp := http_req_handler(ctx, req)
 	defer resp.Body.Close()
 	var orderBook BookDepth
 	//TODO maybe change json decoder to one liner
-	dec := json.NewDecoder(resp.Body)
-	dec.Decode(&orderBook)
+	json.NewDecoder(resp.Body).Decode(&orderBook)
 	return orderBook
 }
 
@@ -209,8 +214,13 @@ type Balance struct {
 }
 
 //TODO check this function live
-func get_funds(asset string) (float64, error) {
-	resp := sGet_req("/api/v3/account", nil)
+func get_funds(ctx context.Context, asset string) (float64, error) {
+	req := httpReq{
+		method: http.MethodGet,
+		url:    "/api/v3/account",
+		weight: weightAccInfo,
+	}
+	resp := http_req_handler(ctx, req)
 	defer resp.Body.Close()
 	var funds Funds
 	json.NewDecoder(resp.Body).Decode(&funds)
@@ -219,7 +229,7 @@ func get_funds(asset string) (float64, error) {
 			return v.Amount, nil
 		}
 	}
-	err := errors.New("Asset not fund!")
+	err := errors.New("Asset not found!")
 	return 0, err
 }
 
@@ -232,7 +242,8 @@ func format_price(price float64) {
 	//TODO implement func to format price with filters
 }
 
-func market_order(symbol, side string, qty float64) {
+func market_order(ctx context.Context, symbol, side string, qty float64) {
+	//TODO test this
 	qParams := queryParams{
 		"symbol": symbol,
 		"side":   side,
@@ -244,14 +255,15 @@ func market_order(symbol, side string, qty float64) {
 	case SELL:
 		qParams["quantity"] = fmt.Sprint(qty)
 	}
-	resp := sPost_req("/api/v3/order/test", qParams)
+	req := create_httpReq(http.MethodPost, "/api/v3/order/test", qParams, true, weightOrder)
+	resp := http_req_handler(ctx, req)
 	//TODO check whick struct to implement and what resp needed
 	var t interface{}
 	json.NewDecoder(resp.Body).Decode(&t)
 	fmt.Println(resp)
 }
 
-func limit_order(symbol, side string, qty, price float64) {
+func limit_order(ctx context.Context, symbol, side string, qty, price float64) {
 	//TODO check if time in force needs to be var
 	qParams := queryParams{
 		"symbol":      symbol,
@@ -261,7 +273,8 @@ func limit_order(symbol, side string, qty, price float64) {
 		"price":       fmt.Sprint(price),
 		"quantity":    fmt.Sprint(qty),
 	}
-	resp := sPost_req("/api/v3/order/test", qParams)
+	req := create_httpReq(http.MethodPost, "/api/v3/order/test", qParams, true, weightOrder)
+	resp := http_req_handler(ctx, req)
 	//TODO check whick struct to implement and what resp needed
 	var t interface{}
 	json.NewDecoder(resp.Body).Decode(&t)
@@ -310,11 +323,12 @@ type T struct {
 }
 
 // Get order book and cache result. Then listen to the WS for new orders and send result to the reps handler.
-func listen_ws(ctx context.Context, stopCh <-chan bool, wsConn *websocket.Conn) {
+func listen_ws(ctx context.Context, wsConn *websocket.Conn) {
 	//var wsResp TT
 	var wsResp WsStream
 	//TODO add ctx value origin. Not needed but good
-	ctx, cancel := context.WithCancel(ctx)
+	//TODO resolve problem with 429. Evt. CancelFunc needed
+	//ctx, cancel := context.WithCancel(ctx)
 	for {
 		err := websocket.JSON.Receive(wsConn, &wsResp)
 		if err != nil {
@@ -322,9 +336,7 @@ func listen_ws(ctx context.Context, stopCh <-chan bool, wsConn *websocket.Conn) 
 		}
 		resp_hander(ctx, &wsResp)
 
-		//select {
-		//case <-stopCh:
-		//	cancel()
+		//select { //case <-stopCh: //	cancel()
 		//	return
 		//default:
 		//	ctx = context.WithValue(ctx, "id", i)
@@ -339,8 +351,8 @@ func listen_ws(ctx context.Context, stopCh <-chan bool, wsConn *websocket.Conn) 
 	}
 }
 
-func init_order_price(market string, symbol string, pos int) {
-	oBook := get_order_book(symbol)
+func init_order_price(ctx context.Context, market string, symbol string, pos int) {
+	oBook := get_order_book(ctx, symbol)
 	switch market {
 	case BUY:
 		price, _ := oBook.Asks[pos][0].Float64()
@@ -377,20 +389,24 @@ type TrdStratConfig struct {
 func (strat TrdStratConfig) Exec_strat(wsConn *websocket.Conn) {
 	//Init cancelCh
 	cancelCh = make(chan time.Duration)
+	//TODO check if cancel is needed
 	ctx := context.Background()
+	ctxOr := ctxOrigin("origin")
 	//TODO implement exInfo ticker 24h and other counters
 	//Set TrdStrategy config
 	trdStrategy = strat
 	//Set ExInfos
-	//exInfos := get_ex_info(strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
+	ctx = context.WithValue(ctx, ctxOr, "default")
+	//exInfos := get_ex_info(ctx, strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
 	//symbolsFilters = exInfos.Symbols
 	//set_rLimits(exInfos.RateLimits)
+	//TODO see if ctx needed
 	//go rLimits_handler(exLimitsCtrs)
 	//TODO implement goroutine
 	//Init Maret prices
-	//init_order_price(BUY, strat.BuyMarket, 1)
-	//init_order_price(SELL, strat.SellMarket, 1)
-	//init_order_price(CONV, strat.ConvMarket, 2)
+	//init_order_price(ctx, BUY, strat.BuyMarket, 1)
+	//init_order_price(ctx, SELL, strat.SellMarket, 1)
+	//init_order_price(ctx, CONV, strat.ConvMarket, 2)
 	//Subscribe to WS book stream
 	//subscribeStream(wsConn, strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
 	listen_ws(ctx, wsConn)
