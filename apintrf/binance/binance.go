@@ -310,24 +310,32 @@ type T struct {
 }
 
 // Get order book and cache result. Then listen to the WS for new orders and send result to the reps handler.
-func Listen_ws(ctx context.Context, wsConn *websocket.Conn) {
-	//Init stratStatus for control
-	stratStatus.init()
+func listen_ws(ctx context.Context, stopCh <-chan bool, wsConn *websocket.Conn) {
+	//var wsResp TT
 	var wsResp WsStream
 	//TODO add ctx value origin. Not needed but good
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	//go func() {
-	//	time.Sleep(5 * time.Second)
-	//	fmt.Println("sleep func run")
-	//	stratStatus.cancelCh <- time.Duration(20) * time.Second
-	//}()
 	for {
 		err := websocket.JSON.Receive(wsConn, &wsResp)
 		if err != nil {
 			apintrf.Log_err().Panicf("Error reading request from WS: %s", err)
 		}
-		go resp_hander(ctx, &wsResp)
+		resp_hander(ctx, &wsResp)
+
+		//select {
+		//case <-stopCh:
+		//	cancel()
+		//	return
+		//default:
+		//	ctx = context.WithValue(ctx, "id", i)
+		//	err := websocket.JSON.Receive(wsConn, &wsResp)
+		//	//TODO how should this err be handled? Fatal? Retry after timeout?
+		//	if err != nil {
+		//		apintrf.Log_err().Panicf("Error reading request from WS: %s", err)
+		//	}
+		//	resp_hander(ctx, &wsResp)
+		//	fmt.Printf("Ctx %d send\n", i)
+		//}
 	}
 }
 
@@ -367,16 +375,17 @@ type TrdStratConfig struct {
 }
 
 func (strat TrdStratConfig) Exec_strat(wsConn *websocket.Conn) {
+	//Init cancelCh
+	cancelCh = make(chan time.Duration)
 	ctx := context.Background()
-	//TODO implement HTTP 429 for exes limits
 	//TODO implement exInfo ticker 24h and other counters
 	//Set TrdStrategy config
 	trdStrategy = strat
 	//Set ExInfos
-	exInfos := get_ex_info(strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
-	symbolsFilters = exInfos.Symbols
-	set_rLimits(exInfos.RateLimits)
-	go rLimits_handler(exLimitsCtrs)
+	//exInfos := get_ex_info(strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
+	//symbolsFilters = exInfos.Symbols
+	//set_rLimits(exInfos.RateLimits)
+	//go rLimits_handler(exLimitsCtrs)
 	//TODO implement goroutine
 	//Init Maret prices
 	//init_order_price(BUY, strat.BuyMarket, 1)
@@ -384,11 +393,42 @@ func (strat TrdStratConfig) Exec_strat(wsConn *websocket.Conn) {
 	//init_order_price(CONV, strat.ConvMarket, 2)
 	//Subscribe to WS book stream
 	//subscribeStream(wsConn, strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
-	wsReq := WsRequest{
-		Method: "SUBSCRIBE",
-		Params: []string{"btcusdt@aggTrade"},
-		Id:     1,
-	}
-	wsReq.Send_req(wsConn)
-	Listen_ws(ctx, wsConn)
+	listen_ws(ctx, wsConn)
+	//TODO see if needed 429 HANDLER
+	//wsReq := WsRequest{
+	//	Method: "SUBSCRIBE",
+	//	Params: []string{"btcusdt@aggTrade"},
+	//	Id:     1,
+	//}
+	//wsReq.Send_req(wsConn)
+	//go func() {
+	//	time.Sleep(2 * time.Second)
+	//	fmt.Println("sleep func run")
+	//	cancelCh <- time.Duration(10) * time.Second
+	//}()
+	//ch := make(chan bool)
+	//go listen_ws(ctx, ch, wsConn)
+	//for {
+	//	select {
+	//	case interval := <-cancelCh:
+	//		fmt.Println(interval)
+	//		ch <- false
+	//		go timeout_conns(ch, interval)
+	//	case <-ch:
+	//		go listen_ws(ctx, ch, wsConn)
+	//	}
+	//}
 }
+
+//TODO see if needed
+//func timeout_conns(ch chan<- bool, d time.Duration) {
+//	ticker := time.NewTicker(d)
+//	defer ticker.Stop()
+//	for {
+//		select {
+//		case <-ticker.C:
+//			ch <- true
+//			return
+//		}
+//	}
+//}
