@@ -12,19 +12,33 @@ import (
 var trdCh = make(chan bool, 3)
 
 type trdInfo struct {
-	buyPrice float64
-	sellAmnt float64
-	convAmnt float64
+	buyPrice  float64
+	sellAmnt  float64
+	convAmnt  float64
+	reqWeight int
+	rawReqs   int
+	orders    int
 }
 
 func trd_handler(ctx context.Context) {
 	for {
 		select {
 		case trdCh <- true:
-			//TODO implement exLimitsCtrs
-			var trd *trdInfo
+			trd := trdInfo{
+				reqWeight: weightTrd,
+				rawReqs:   5,
+				orders:    3,
+			}
+			//Block limitsCtrs to ensure trd execution. Blocked var will be used to free ctrs in case of an error.
+			exLimitsCtrs.reqWeight.decrease_counter(trd.reqWeight)
+			exLimitsCtrs.rawReq.decrease_counter(trd.rawReqs)
+			exLimitsCtrs.orders.decrease_counter(trd.orders)
+			exLimitsCtrs.maxOrders.decrease_counter(trd.orders)
+
+			ctx = context.WithValue(ctx, ctxKey("reqWeight"), false)
 			err := buy_order(ctx, trd)
 			if err != nil {
+				unblock_limit_ctrs(trd)
 				<-trdCh
 			}
 
@@ -34,7 +48,7 @@ func trd_handler(ctx context.Context) {
 			if err != nil {
 				err := retry_order(3, sell_order(ctx, trd), trdStrategy.SellMarket)
 				if err != nil {
-					//TODO log err
+					unblock_limit_ctrs(trd)
 					<-trdCh
 				}
 			}
@@ -60,7 +74,6 @@ func trd_handler(ctx context.Context) {
 //TODO check this on testnet
 func buy_order(ctx context.Context, trd *trdInfo) error {
 	ctx, cancel := context.WithCancel(ctx)
-	ctx = context.WithValue(ctx, ctxKey("origin"), "buyOrder")
 	mPrice := buyMarketP.get_price()
 	price := trdFunds.get_funds(trdStrategy.TrdRate)
 	qty := price / mPrice
@@ -80,6 +93,7 @@ func buy_order(ctx context.Context, trd *trdInfo) error {
 				return err
 			}
 			order := limit_order(ctx, trdStrategy.BuyMarket, BUY, price, qty)
+			update_trd_order(weightOrder, trd)
 			if order.Status == "REJECTED" {
 				err := errors.New("Order was rejected.")
 				return err
@@ -99,7 +113,6 @@ func buy_order(ctx context.Context, trd *trdInfo) error {
 
 func sell_order(ctx context.Context, trd *trdInfo) error {
 	ctx, cancel := context.WithCancel(ctx)
-	ctx = context.WithValue(ctx, ctxKey("origin"), "sellOrder")
 	qty := trd.sellAmnt
 
 	//Pass value and error chan then wait for value return. No need to check qtyCh because both values are needed to continue. If err occurs drop trd and trdCh.
@@ -109,11 +122,13 @@ func sell_order(ctx context.Context, trd *trdInfo) error {
 	select {
 	case qty <- qtyCh:
 		price := get_avg_price(ctx, trdStrategy.SellMarket)
+		update_trd_req(weightAvgPrice, trd)
 		err := parse_market_min_notional(ctx, price, qty)
 		if err != nil {
 			return err
 		}
 		order := market_order(ctx, trdStrategy.SellMarket, SELL, qty)
+		update_trd_order(weightOrder, trd)
 		if order.Status == "REJECTED" {
 			err := errors.New("Order was rejected.")
 			return err
@@ -128,16 +143,17 @@ func sell_order(ctx context.Context, trd *trdInfo) error {
 
 func conv_order(ctx context.Context, trd *trdInfo) error {
 	ctx, cancel := context.WithCancel(ctx)
-	ctx = context.WithValue(ctx, ctxKey("origin"), "convOrder")
 	qty := trd.convAmnt
 
 	//No need to check price or lot filter because by using quoteOrderQty the lot filter is respected.
 	price := get_avg_price(ctx, trdStrategy.ConvMarket)
+	update_trd_req(weightAvgPrice, trd)
 	err := parse_market_min_notional(ctx, price, qty)
 	if err != nil {
 		return err
 	}
 	order := market_order(ctx, trdStrategy.ConvMarket, BUY, qty)
+	update_trd_order(weightOrder, trd)
 	if order.Status == "REJECTED" {
 		err := errors.New("Order was rejected.")
 		return err
@@ -283,6 +299,7 @@ func parse_market_min_notional(ctx context.Context, price, qty float64, market s
 }
 
 func retry_order(n int, f func(ctx, trd *trdInfo), market string) err {
+	ctx = context.WithValue(ctx, ctxKey("reqWeight"), true)
 	for i := 0; i < n; i++ {
 		err := f(ctx, trd)
 		if err == nil {
@@ -291,4 +308,22 @@ func retry_order(n int, f func(ctx, trd *trdInfo), market string) err {
 	}
 	err := fmt.Errorf("Retried to execute order %d time failed. Order info: %s. Market: %s.", n, trd, market)
 	return err
+}
+
+func update_trd_req(weight, rawReq int, trd *trdInfo) {
+	trd.reqWeight = trd.reqWeight - weight
+	trd.rawReqs = trd.rawReqs - 1
+}
+
+func update_trd_order(weight, rawReq int, trd *trdInfo) {
+	trd.reqWeight = trd.reqWeight - weight
+	trd.rawReqs = trd.rawReqs - 1
+	trd.orders = trd.orders - 1
+}
+
+func unblock_limit_ctrs(trd *trdInfo) {
+	exLimitsCtrs.reqWeight.increase_counter(trd.reqWeight)
+	exLimitsCtrs.rawReq.increase_counter(trd.rawReqs)
+	exLimitsCtrs.orders.increase_counter(trd.orders)
+	exLimitsCtrs.maxOrders.increase_counter(trd.orders)
 }

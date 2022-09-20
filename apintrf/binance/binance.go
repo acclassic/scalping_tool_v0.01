@@ -78,13 +78,6 @@ func Set_api_config(config *ApiConfig) {
 
 var exLimitsCtrs limitsCtrs
 
-type limitsCtrs struct {
-	reqWeight rCounter
-	rawReq    rCounter
-	maxOrders rCounter
-	orders    rCounter
-}
-
 //TODO check how this is implemented.
 func rLimits_handler(exLimits limitsCtrs) {
 	//Reset counters after Tick
@@ -102,6 +95,13 @@ func rLimits_handler(exLimits limitsCtrs) {
 	}
 }
 
+type limitsCtrs struct {
+	reqWeight rCounter
+	rawReq    rCounter
+	maxOrders rCounter
+	orders    rCounter
+}
+
 type rCounter struct {
 	count      int
 	resetCount int
@@ -115,10 +115,16 @@ func (c *rCounter) init_counter(n int, interval time.Duration) {
 	c.ticker = time.Tick(interval)
 }
 
-func (c *rCounter) update_counter(n int) {
-	c.mu.Lock()
+func (c *rCounter) decrease_counter(n int) {
+	c.mu.lock()
 	c.count = c.count - n
-	c.mu.Unlock()
+	c.mu.unlock()
+}
+
+func (c *rCounter) increase_counter(n int) {
+	c.mu.lock()
+	c.count = c.count + n
+	c.mu.unlock()
 }
 
 func (c *rCounter) get_counter() int {
