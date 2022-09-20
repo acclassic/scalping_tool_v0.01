@@ -29,7 +29,7 @@ func trd_handler(ctx context.Context) {
 				rawReqs:   5,
 				orders:    3,
 			}
-			//Block limitsCtrs to ensure trd execution. Blocked var will be used to free ctrs in case of an error.
+			//Block limitsCtrs to ensure trd execution. Trd ctrs will be used to free exLimitsCtrs in case of an error.
 			exLimitsCtrs.reqWeight.decrease_counter(trd.reqWeight)
 			exLimitsCtrs.rawReq.decrease_counter(trd.rawReqs)
 			exLimitsCtrs.orders.decrease_counter(trd.orders)
