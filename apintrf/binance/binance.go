@@ -3,7 +3,6 @@ package binance
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -14,10 +13,42 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-var cancelCh chan time.Duration
+//TODO see if trdMarket needs to be new type
+const (
+	BUY  trdMarket = "BUY"
+	SELL trdMarket = "SELL"
+	CONV trdMarket = "CONV"
+)
+
+var cancelCh = make(chan time.Duration)
+var trdFunds accFunds
 
 //TODO use this to check if the weight and req has to be counted against the ctrs
-type ctxOrigin string
+type ctxKey string
+
+type trdMarket string
+
+type accFunds struct {
+	amount float64
+	mu     sync.RWMutex
+}
+
+func (f *accFunds) get_funds(part float64) float64 {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.amount * part
+}
+
+func (f *accFunds) update_funds(origin trdMarket, amount float64) {
+	f.mu.Lock()
+	switch origin {
+	case BUY:
+		f.amount = f.amount - amount
+	case CONV:
+		f.amount = f.amount + amount
+	}
+	f.mu.Unlock()
+}
 
 type WsConfig struct {
 	WsOrigin  string
@@ -45,13 +76,6 @@ func Set_api_config(config *ApiConfig) {
 	api = config
 }
 
-//TODO change to custom type and use that as func param
-const (
-	BUY  = "BUY"
-	SELL = "SELL"
-	CONV = "CONV"
-)
-
 var exLimitsCtrs limitsCtrs
 
 type limitsCtrs struct {
@@ -61,6 +85,7 @@ type limitsCtrs struct {
 	orders    rCounter
 }
 
+//TODO check how this is implemented.
 func rLimits_handler(exLimits limitsCtrs) {
 	//Reset counters after Tick
 	for {
@@ -140,7 +165,7 @@ func set_rLimits(rLimits []RLimits) {
 	}
 }
 
-var symbolsFilters []MarketEx
+var symbolsFilters = make(map[string]map[string]ExFilters)
 
 type ExInfo struct {
 	RateLimits []RLimits  `json:"rateLimits"`
@@ -159,22 +184,31 @@ type MarketEx struct {
 	Filters []ExFilters `json:"filters"`
 }
 
+//TODO test if TickSize is populated
+//TODO implement applyMinToMarket and applyMaxToMarket?
 type ExFilters struct {
 	FType         string  `json:"filterType"`
 	MinPrice      float64 `json:"minPrice,string"`
 	MaxPrice      float64 `json:"maxPrice,string"`
-	TickSize      float64 `json:"tickSize,string"`
+	TickSize      string  `json:"tickSize"`
 	MultipUp      float64 `json:"multipliererUp,string"`
 	MultipDown    float64 `json:"multipliererDown,string"`
-	AvgPriceMins  int     `json:"avgPriceMins,string"`
+	AvgPriceMins  int     `json:"avgPriceMins"`
 	MinQty        float64 `json:"minQty,string"`
 	MaxQty        float64 `json:"maxQty,string"`
-	StepSize      float64 `json:"stepSize,string"`
+	StepSize      string  `json:"stepSize"`
+	MaxNotional   float64 `json:"maxNotional,string"`
 	MinNotional   float64 `json:"minNotional,sting"`
-	ApplyToMarket bool    `json:"applyToMarket,string"`
+	ApplyToMarket bool    `json:"applyToMarket"`
+	ApplyMinToM   bool    `json:"applyMinToMarket"`
+	ApplyMaxToM   bool    `json:"applyMaxToMarket"`
 	MaxNumOrders  int     `json:"maxNumOrders,string"`
+	pricePrc      int
+	lotPrc        int
+	mLotPrc       int
 }
 
+//TODO change return to pointer
 func get_ex_info(ctx context.Context, buyMarket, sellMarket, convMarket string) ExInfo {
 	symbols := fmt.Sprintf(`["%s","%s","%s"]`, buyMarket, sellMarket, convMarket)
 	qParams := queryParams{
@@ -186,6 +220,36 @@ func get_ex_info(ctx context.Context, buyMarket, sellMarket, convMarket string) 
 	var exInfo ExInfo
 	json.NewDecoder(resp.Body).Decode(&exInfo)
 	return exInfo
+}
+
+func set_symbols_filters(marketsFilter []MarketEx) {
+	//Convert struct to map with struct for direct access to filters
+	for _, v := range marketsFilter {
+		for _, f := range v.Filters {
+			pricePrc := calc_precision(f.TickSize)
+			switch f.FType {
+			case "LOT_SIZE":
+				lotPrc := calc_precision(f.StepSize)
+			case "MARKET_LOT_SIZE":
+				mLotPrc := calc_precision(f.StepSize)
+			}
+			f.pricePrc = pricePrc
+			f.lotPrc = lotPrc
+			symbolsFilters[v.Symbol][f.FType] = f
+		}
+	}
+}
+
+func calc_precision(tickSize string) int {
+	i := 0
+	s := strings.SplitAfter(tickSize, ".")
+	for _, v := range s[1] {
+		i++
+		if v == "1" {
+			return i
+		}
+	}
+	return 0
 }
 
 type BookDepth struct {
@@ -213,41 +277,47 @@ type Balance struct {
 	Amount float64 `json:"free,string"`
 }
 
-//TODO check this function live
-func get_funds(ctx context.Context, asset string) (float64, error) {
-	req := httpReq{
-		method: http.MethodGet,
-		url:    "/api/v3/account",
-		weight: weightAccInfo,
-	}
+//TODO test this on live to see if Fiat is aviable
+func get_acc_funds(ctx context.Context, asset string) float64 {
+	req := create_httpReq(http.MethodGet, "/api/v3/account", queryParams{}, false, weightAccInfo)
 	resp := http_req_handler(ctx, req)
 	defer resp.Body.Close()
 	var funds Funds
 	json.NewDecoder(resp.Body).Decode(&funds)
 	for _, v := range funds.Balances {
 		if v.Asset == asset {
-			return v.Amount, nil
+			return v.Amount
 		}
 	}
-	err := errors.New("Asset not found!")
-	return 0, err
+	return 0
 }
 
-type order struct {
-	buyAmnt  float64
-	sellAmnt float64
+func get_avg_price(ctx context.Context, symbol string) float64 {
+	qParams := queryParams{"symbol": symbol}
+	req := create_httpReq(http.MethodGet, "/api/v3/avgPrice", qParams, false, weightAvgPrice)
+	resp := http_req_handler(ctx, req)
+	defer req.body.Close()
+	var avgPrice map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&avgPrice)
+	price := avgPrice["price"].(float64)
+	return price
 }
 
-func format_price(price float64) {
-	//TODO implement func to format price with filters
+type OrderResp struct {
+	Symbol  string  `json:"symbol"`
+	Price   float64 `json:"price,string"`
+	Qty     float64 `json:"executedQty,string"`
+	Status  string  `json:"status"`
+	stratID int     `json:"strategyId"`
 }
 
-func market_order(ctx context.Context, symbol, side string, qty float64) {
+func market_order(ctx context.Context, symbol string, side trdMarket, qty float64) OrderResp {
 	//TODO test this
 	qParams := queryParams{
-		"symbol": symbol,
-		"side":   side,
-		"type":   "MARKET",
+		"symbol":           symbol,
+		"side":             string(side),
+		"type":             "MARKET",
+		"newOrderRespType": "RESULT",
 	}
 	switch side {
 	case BUY:
@@ -258,27 +328,30 @@ func market_order(ctx context.Context, symbol, side string, qty float64) {
 	req := create_httpReq(http.MethodPost, "/api/v3/order/test", qParams, true, weightOrder)
 	resp := http_req_handler(ctx, req)
 	//TODO check whick struct to implement and what resp needed
-	var t interface{}
-	json.NewDecoder(resp.Body).Decode(&t)
-	fmt.Println(resp)
+	var order OrderResp
+	json.NewDecoder(resp.Body).Decode(&order)
+	return order
 }
 
-func limit_order(ctx context.Context, symbol, side string, qty, price float64) {
+//TODO change side from string to trdMarket. Probably need to implement type
+//TODO implement strategyId for analytics. Pass form trd_handler()
+func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty float64) OrderResp {
 	//TODO check if time in force needs to be var
 	qParams := queryParams{
-		"symbol":      symbol,
-		"side":        side,
-		"type":        "LIMIT",
-		"timeInForce": "IOC",
-		"price":       fmt.Sprint(price),
-		"quantity":    fmt.Sprint(qty),
+		"symbol":           symbol,
+		"side":             string(side),
+		"type":             "LIMIT",
+		"timeInForce":      "IOC",
+		"price":            fmt.Sprint(price),
+		"quantity":         fmt.Sprint(qty),
+		"newOrderRespType": "RESULT",
 	}
 	req := create_httpReq(http.MethodPost, "/api/v3/order/test", qParams, true, weightOrder)
 	resp := http_req_handler(ctx, req)
 	//TODO check whick struct to implement and what resp needed
-	var t interface{}
-	json.NewDecoder(resp.Body).Decode(&t)
-	fmt.Println(resp)
+	var order OrderResp
+	json.NewDecoder(resp.Body).Decode(&order)
+	return order
 }
 
 type WsRequest struct {
@@ -351,7 +424,7 @@ func listen_ws(ctx context.Context, wsConn *websocket.Conn) {
 	}
 }
 
-func init_order_price(ctx context.Context, market string, symbol string, pos int) {
+func init_order_price(ctx context.Context, market trdMarket, symbol string, pos int) {
 	oBook := get_order_book(ctx, symbol)
 	switch market {
 	case BUY:
@@ -386,20 +459,22 @@ type TrdStratConfig struct {
 	TrdRate    float64
 }
 
+//TODO overthink if ctx value is needed
 func (strat TrdStratConfig) Exec_strat(wsConn *websocket.Conn) {
-	//Init cancelCh
-	cancelCh = make(chan time.Duration)
 	//TODO check if cancel is needed
 	ctx := context.Background()
-	ctxOr := ctxOrigin("origin")
+	ctxOr := ctxKey("origin")
 	//TODO implement exInfo ticker 24h and other counters
 	//Set TrdStrategy config
 	trdStrategy = strat
 	//Set ExInfos
 	ctx = context.WithValue(ctx, ctxOr, "default")
 	//exInfos := get_ex_info(ctx, strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
-	//symbolsFilters = exInfos.Symbols
+	//set_symbols_filters(exInfos.Symbols)
 	//set_rLimits(exInfos.RateLimits)
+	//Set accFunds
+	//funds := get_acc_funds(ctx, "EUR")
+	//trdFunds = funds
 	//TODO see if ctx needed
 	//go rLimits_handler(exLimitsCtrs)
 	//TODO implement goroutine
@@ -409,7 +484,7 @@ func (strat TrdStratConfig) Exec_strat(wsConn *websocket.Conn) {
 	//init_order_price(ctx, CONV, strat.ConvMarket, 2)
 	//Subscribe to WS book stream
 	//subscribeStream(wsConn, strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
-	listen_ws(ctx, wsConn)
+	//listen_ws(ctx, wsConn)
 	//TODO see if needed 429 HANDLER
 	//wsReq := WsRequest{
 	//	Method: "SUBSCRIBE",

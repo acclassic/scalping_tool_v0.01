@@ -7,11 +7,9 @@ import (
 	"time"
 )
 
-var (
-	buyMarketP  marketPrice
-	sellMarketP marketPrice
-	convMarketP marketPrice
-)
+var buyMarketP marketPrice
+var sellMarketP marketPrice
+var convMarketP marketPrice
 
 type marketPrice struct {
 	mu    sync.RWMutex
@@ -34,37 +32,12 @@ func (mp *marketPrice) get_price() float64 {
 
 //TODO replace markets with global var
 func resp_hander(ctx context.Context, resp *WsStream) {
-	//TODO 429 handler
-	//for {
-	//	select {
-	//	case <-ctx.Done():
-	//		fmt.Printf("Ctx %d cancelled!\n", ctx.Value("id"))
-	//		return
-	//	default:
-	//		fmt.Println(time.UnixMilli(resp.Data.S))
-	//		fmt.Printf("Ctx %d passed!\n", ctx.Value("id"))
-	//		return
-	//	}
-	//}
-
-	//DEL
-	//params := queryParams{
-	//	"symbol": "EURUSDT",
-	//}
-	//reqParams := httpReq{
-	//	method:  "GET",
-	//	url:     "/api/v3/avgPrice",
-	//	qParams: params,
-	//}
-	//http_req_handler(ctx, reqParams)
-	//DEL
-
 	//If resp empty ignore, means sendet req was sucessfull
 	//if len(resp.Data.Asks) <= 0 && len(resp.Data.Bids) <= 0 {
 	//	return
 	//}
 
-	//TODO change trim to split after @ and take first slice
+	////TODO change trim to split after @ and take first slice
 	//markt := strings.TrimSuffix(resp.Stream, "@depth5@100ms")
 	//switch strings.ToUpper(markt) {
 	//case trdStrategy.BuyMarket:
@@ -81,6 +54,26 @@ func resp_hander(ctx context.Context, resp *WsStream) {
 	//	convMarketP.update_price(price)
 	//}
 	//TODO check with sleeper and witohout goroutine
+	//for {
+	//	select {
+	//	case <-ctx.Done():
+	//		fmt.Println("return")
+	//		return
+	//	default:
+	//		fmt.Println(time.UnixMilli(resp.Data.S))
+	//	}
+	//}
+	//DEL
+	//params := queryParams{
+	//	"symbol": "EURUSDT",
+	//}
+	//reqParams := httpReq{
+	//	method:  "GET",
+	//	url:     "/api/v3/avgPrice",
+	//	qParams: params,
+	//}
+	//http_req_handler(ctx, reqParams)
+	//DEL
 
 	//if trd_signal() == true {
 	//	fmt.Println("true")
