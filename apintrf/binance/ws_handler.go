@@ -2,9 +2,7 @@ package binance
 
 import (
 	"context"
-	"fmt"
 	"sync"
-	"time"
 )
 
 var buyMarketP marketPrice
@@ -24,9 +22,10 @@ func (mp *marketPrice) update_price(price float64) {
 }
 
 //Read order prices for markets.
-func (mp *marketPrice) get_price() float64 {
+func (mp *marketPrice) get_price(wg *sync.WaitGroup) float64 {
 	mp.mu.RLock()
 	defer mp.mu.RUnlock()
+	defer wg.Done()
 	return mp.price
 }
 
@@ -74,35 +73,4 @@ func resp_hander(ctx context.Context, resp *WsStream) {
 	//}
 	//http_req_handler(ctx, reqParams)
 	//DEL
-
-	//if trd_signal() == true {
-	//	fmt.Println("true")
-	//} else {
-	//	//If trd_signal false drop resp
-	//	fmt.Println("false")
-	//}
-}
-
-func trd_signal() bool {
-	//TODO evtl. include sync.Waitgroup and goroutine
-	buyPrice := buyMarketP.get_price()
-	sellPrice := sellMarketP.get_price()
-	convPrice := convMarketP.get_price()
-	if m := sellPrice/convPrice - buyPrice; m > 0 {
-		fmt.Println(m)
-		return true
-	} else {
-		fmt.Println(m)
-		return false
-	}
-}
-
-var buyCh = make(chan bool, 1)
-
-func buy_handler() {
-	buyCh <- true
-	//get_funds("BTC")
-	//get_avg_spread("BTCUSDT")
-	time.Sleep(time.Minute)
-	<-buyCh
 }

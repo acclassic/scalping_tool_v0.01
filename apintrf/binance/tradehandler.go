@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 )
 
 //TODO check if possible to only get avgPrice once and pass to other funcs.
@@ -21,7 +22,7 @@ type trdInfo struct {
 }
 
 func trd_handler(ctx context.Context) {
-	for {
+	for trd_signal() == true {
 		select {
 		case trdCh <- true:
 			trd := trdInfo{
@@ -64,6 +65,7 @@ func trd_handler(ctx context.Context) {
 			}
 
 			<-trdCh
+			return
 		default:
 			//If trdCh is full drop chan
 			return
@@ -308,6 +310,23 @@ func retry_order(n int, f func(ctx, trd *trdInfo), market string) err {
 	}
 	err := fmt.Errorf("Retried to execute order %d time failed. Order info: %s. Market: %s.", n, trd, market)
 	return err
+}
+
+func trd_signal() bool {
+	//TODO evtl. include sync.Waitgroup and goroutine
+	var wg *sync.WaitGroup
+	wg.Add(3)
+	buyPrice := buyMarketP.get_price(wg)
+	sellPrice := sellMarketP.get_price(wg)
+	convPrice := convMarketP.get_price(wg)
+	wg.Wait()
+	if m := sellPrice/convPrice - buyPrice; m > 0 {
+		fmt.Println(m)
+		return true
+	} else {
+		fmt.Println(m)
+		return false
+	}
 }
 
 func update_trd_req(weight, rawReq int, trd *trdInfo) {
