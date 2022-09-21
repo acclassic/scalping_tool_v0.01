@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"swap-trader/apintrf"
 	"sync"
@@ -55,13 +56,27 @@ type WsConfig struct {
 	WsAddress string
 }
 
-func (wConfig *WsConfig) Connect_ws() *websocket.Conn {
-	wsConfig, _ := websocket.NewConfig(wConfig.WsAddress, wConfig.WsOrigin)
+func connect_ws() *websocket.Conn {
+	config := get_ws_config()
+	wsConfig, _ := websocket.NewConfig(config.WsAddress, config.WsOrigin)
 	wsConn, err := websocket.DialConfig(wsConfig)
 	if err != nil {
-		apintrf.Log_err().Panicf("Error connecting to the WebSocket: %s", err)
+		apintrf.Sys_Logger().Fatalf("WARNING: Could not connect to WS. %s", err)
 	}
 	return wsConn
+}
+
+func get_ws_config() WsConfig {
+	file, err := os.Open("config/ws.conf")
+	if err != nil {
+		apintrf.Sys_Logger().Fatalf("WARNING: Could not load WS config file. %s", err)
+	}
+	var wsConfig WsConfig
+	err := json.NewDecoder(file).Decode(&wsConfig)
+	if err != nil {
+		apintrf.Sys_Logger().Fatalf("WARNING: Could not decode WS config file. %s", err)
+	}
+	return wsConfig
 }
 
 var api *ApiConfig
@@ -72,8 +87,15 @@ type ApiConfig struct {
 	Address   string
 }
 
-func Set_api_config(config *ApiConfig) {
-	api = config
+func set_api_config() {
+	file, err := os.Open("config/api.conf")
+	if err != nil {
+		apintrf.sys_Logger().Fatalf("WARNING: Could not load API config file. %s", err)
+	}
+	err := json.NewDecoder(file).Decode(api)
+	if err != nil {
+		apintrf.sys_Logger().Fatalf("WARNING: Could not decode API config file. %s", err)
+	}
 }
 
 var exLimitsCtrs limitsCtrs
@@ -465,16 +487,30 @@ type TrdStratConfig struct {
 	TrdRate    float64
 }
 
+func set_trd_strat() {
+	file, err := os.Open("config/strat.conf")
+	if err != nil {
+		apintrf.sys_Logger().Fatalf("WARNING: Could not load API config file. %s", err)
+	}
+	err := json.NewDecoder(file).Decode(&trdStrategy)
+	if err != nil {
+		apintrf.sys_Logger().Fatalf("WARNING: Could not decode API config file. %s", err)
+	}
+}
+
 //TODO overthink if ctx value is needed
-func (strat TrdStratConfig) Exec_strat(wsConn *websocket.Conn) {
+func Exec_strat() {
+	//Set Api Config
+	set_api_config()
+	//Set Trd Strat
+	set_trd_strat()
+	//Get WS Connection
+	ws := connect_ws()
 	//TODO check if cancel is needed
 	ctx := context.Background()
-	ctxOr := ctxKey("origin")
+	ctx = context.WithValue(ctx, ctxKey("reqWeight"), true)
 	//TODO implement exInfo ticker 24h and other counters
-	//Set TrdStrategy config
-	trdStrategy = strat
 	//Set ExInfos
-	ctx = context.WithValue(ctx, ctxOr, "default")
 	//exInfos := get_ex_info(ctx, strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
 	//set_symbols_filters(exInfos.Symbols)
 	//set_rLimits(exInfos.RateLimits)

@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"swap-trader/apintrf"
 	"time"
@@ -42,16 +44,19 @@ func create_httpReq(method, url string, qParams queryParams, s bool, weight int)
 	return req
 }
 
-func http_req_handler(ctx context.Context, reqParams httpReq) *http.Response {
-	//Check if req dosen't come from trade and update counters if not.
-	if ctx.Value(ctxOrigin("origin")) == "default" {
+func http_req_handler(ctx context.Context, reqParams httpReq) (*http.Response, error) {
+	//Check if reqWeight has to be subtracted or not
+	if ctx.Value(ctxKey("updateCtrs")) == true {
 		weightCtr := exLimitsCtrs.reqWeight.get_counter()
 		reqCtr := exLimitsCtrs.rawReq.get_counter()
+		//Check if ctrs allow req execution. If not don't execute and return error.
 		if weightCtr-reqParams.weight >= 0 && reqCtr-1 >= 0 {
-			exLimitsCtrs.reqWeight.update_counter(reqParams.weight)
+			exLimitsCtrs.reqWeight.sub(reqParams.weight)
 			exLimitsCtrs.rawReq.update_counter(1)
 		} else {
-			//TODO log this for analytics data
+			//TODO see if needs to be logged
+			err := errors.New("ERROR: Counters low. API request could not be executed.")
+			return nil, err
 		}
 	}
 	//TODO check if needed
@@ -80,7 +85,6 @@ func http_req_handler(ctx context.Context, reqParams httpReq) *http.Response {
 	if resp.StatusCode != 200 {
 		//TODO clean this up. How to handle errors from Client.Do()
 		error_handler()
-		return resp
 	} else {
 		return resp
 	}
@@ -144,17 +148,17 @@ func check_rLimits(weight int) bool {
 	}
 }
 
-func error_handler() {
-	//if resp.StatusCode != 200 {
-	//	switch resp.StatusCode {
-	//	case 429:
-	//		if waitTime := resp.Header.Get("Retry-After"); waitTime != "" {
-	//			apintrf.Log_err().Fatalln("WARNING: App stopped. HTTP Resp returned empty 'Retry-After' Header. Check Binance support.")
-	//		} else {
-	//			n, _ := strconv.Atoi(waitTime)
-	//			d := time.Duration(n) * time.Second
-	//			cancelCh <- d
-	//		}
-	//	}
-	//}
+func error_handler(resp *http.Response) {
+	if resp.StatusCode != 200 {
+		switch resp.StatusCode {
+		case 429:
+			if waitTime := resp.Header.Get("Retry-After"); waitTime != "" {
+				apintrf.Log_err().Fatalln("WARNING: App stopped. HTTP Resp returned empty 'Retry-After' Header. Check Binance support.")
+			} else {
+				n, _ := strconv.Atoi(waitTime)
+				d := time.Duration(n) * time.Second
+				cancelCh <- d
+			}
+		}
+	}
 }
