@@ -552,16 +552,3 @@ func Exec_strat() {
 	//	}
 	//}
 }
-
-//TODO see if needed
-//func timeout_conns(ch chan<- bool, d time.Duration) {
-//	ticker := time.NewTicker(d)
-//	defer ticker.Stop()
-//	for {
-//		select {
-//		case <-ticker.C:
-//			ch <- true
-//			return
-//		}
-//	}
-//}

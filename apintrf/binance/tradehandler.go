@@ -10,6 +10,7 @@ import (
 
 //TODO check if possible to only get avgPrice once and pass to other funcs.
 //TODO check if chan needs init func for variable buffer size
+//TODO check if chan needs to be a local var for trd_handler
 var trdCh = make(chan bool, 3)
 
 type trdInfo struct {
@@ -65,10 +66,13 @@ func trd_handler(ctx context.Context) {
 			}
 
 			<-trdCh
+			break
+		case <-ctx.Done():
+			//If ctx is cancelled exit func
 			return
 		default:
 			//If trdCh is full drop chan
-			return
+			break
 		}
 	}
 }
