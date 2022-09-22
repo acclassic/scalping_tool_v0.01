@@ -13,6 +13,8 @@ func service_handler(ctx context.Context, ws *websocket.Conn) {
 	parentCtx := ctx
 	var ctxCancel context.CancelFunc
 	ctx, ctxCancel = context.WithCancel(parentCtx)
+	//Start services
+	go rLimits_handler(exLimitsCtrs)
 	go listen_ws(ws)
 	go trd_handler(ctx)
 

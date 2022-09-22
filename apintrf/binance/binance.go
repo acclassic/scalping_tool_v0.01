@@ -452,30 +452,20 @@ func listen_ws(ctx context.Context, wsConn *websocket.Conn) {
 	}
 }
 
-func init_order_price(ctx context.Context, market trdMarket, symbol string, pos int) {
+func init_markets_price(ctx context.Context, symbol string, wg *sync.WaitGroup) {
+	defer wg.Done()
 	oBook := get_order_book(ctx, symbol)
-	switch market {
-	case BUY:
+	switch symbol {
+	case trdStrategy.BuyMarket:
 		price, _ := oBook.Asks[pos][0].Float64()
 		buyMarketP.update_price(price)
-	case SELL:
+	case trdStrategy.SellMarket:
 		price, _ := oBook.Bids[pos][0].Float64()
 		sellMarketP.update_price(price)
-	case CONV:
+	case trdStrategy.ConvMarket:
 		price, _ := oBook.Asks[pos][0].Float64()
 		convMarketP.update_price(price)
 	}
-	//defer wg.Done()
-	//switch market {
-	//case "buy":
-	//	oBook := get_order_book(strat.BuyMarket)
-	//	price, _ := oBook.Asks[2][0].Float64()
-	//	buyMarketP.update_price(price)
-	//case "sell":
-	//	oBook := get_order_book(strat.SellMarket)
-	//	price, _ := oBook.Bids[2][0].Float64()
-	//	sellMarketP.update_price(price)
-	//}
 }
 
 var trdStrategy TrdStratConfig
@@ -506,49 +496,24 @@ func Exec_strat() {
 	set_trd_strat()
 	//Get WS Connection
 	ws := connect_ws()
-	//TODO check if cancel is needed
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, ctxKey("reqWeight"), true)
-	//TODO implement exInfo ticker 24h and other counters
 	//Set ExInfos
-	//exInfos := get_ex_info(ctx, strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
-	//set_symbols_filters(exInfos.Symbols)
-	//set_rLimits(exInfos.RateLimits)
+	exInfos := get_ex_info(ctx, strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
+	set_symbols_filters(exInfos.Symbols)
+	set_rLimits(exInfos.RateLimits)
 	//Set accFunds
-	//funds := get_acc_funds(ctx, "EUR")
-	//trdFunds = funds
-	//TODO see if ctx needed
-	//go rLimits_handler(exLimitsCtrs)
-	//TODO implement goroutine
+	funds := get_acc_funds(ctx, "EUR")
+	trdFunds = funds
 	//Init Maret prices
-	//init_order_price(ctx, BUY, strat.BuyMarket, 1)
-	//init_order_price(ctx, SELL, strat.SellMarket, 1)
-	//init_order_price(ctx, CONV, strat.ConvMarket, 2)
+	var wg sync.WaitGroup
+	wg.Add(3)
+	init_markets_price(ctx, trdStrategy.BuyMarket, wg)
+	init_markets_price(ctx, trdStrategy.SellMarket, wg)
+	init_markets_price(ctx, trdStrategy.ConvMarket, wg)
+	wg.Wait()
 	//Subscribe to WS book stream
-	//subscribeStream(wsConn, strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
-	//listen_ws(ctx, wsConn)
-	//TODO see if needed 429 HANDLER
-	//wsReq := WsRequest{
-	//	Method: "SUBSCRIBE",
-	//	Params: []string{"btcusdt@aggTrade"},
-	//	Id:     1,
-	//}
-	//wsReq.Send_req(wsConn)
-	//go func() {
-	//	time.Sleep(2 * time.Second)
-	//	fmt.Println("sleep func run")
-	//	cancelCh <- time.Duration(10) * time.Second
-	//}()
-	//ch := make(chan bool)
-	//go listen_ws(ctx, ch, wsConn)
-	//for {
-	//	select {
-	//	case interval := <-cancelCh:
-	//		fmt.Println(interval)
-	//		ch <- false
-	//		go timeout_conns(ch, interval)
-	//	case <-ch:
-	//		go listen_ws(ctx, ch, wsConn)
-	//	}
-	//}
+	subscribeStream(wsConn, strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
+	//Start service handler
+	service_handler(ctx, ws)
 }
