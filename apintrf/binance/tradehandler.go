@@ -105,8 +105,11 @@ func buy_order(ctx context.Context, trd *trdInfo) error {
 			if err != nil {
 				return err
 			}
-			order := limit_order(ctx, trdStrategy.BuyMarket, BUY, price, qty)
+			order, err := limit_order(ctx, trdStrategy.BuyMarket, BUY, price, qty)
 			update_trd_order(weightOrder, trd)
+			if err != nil {
+				return err
+			}
 			if order.Status == "REJECTED" {
 				err := errors.New("Order was rejected.")
 				return err
@@ -137,14 +140,20 @@ func sell_order(ctx context.Context, trd *trdInfo) error {
 	go parse_market_qty(ctx, errCh, qtyCh, qty, trdStrategy.SellMarket)
 	select {
 	case qty <- qtyCh:
-		price := get_avg_price(ctx, trdStrategy.SellMarket)
+		price, err := get_avg_price(ctx, trdStrategy.SellMarket)
 		update_trd_req(weightAvgPrice, trd)
+		if err != nil {
+			return err
+		}
 		err := parse_market_min_notional(ctx, price, qty)
 		if err != nil {
 			return err
 		}
-		order := market_order(ctx, trdStrategy.SellMarket, SELL, qty)
+		order, err := market_order(ctx, trdStrategy.SellMarket, SELL, qty)
 		update_trd_order(weightOrder, trd)
+		if err != nil {
+			return err
+		}
 		if order.Status == "REJECTED" {
 			err := errors.New("Order was rejected.")
 			return err
@@ -165,14 +174,20 @@ func conv_order(ctx context.Context, trd *trdInfo) error {
 	qty := trd.convAmnt
 
 	//No need to check price or lot filter because by using quoteOrderQty the lot filter is respected.
-	price := get_avg_price(ctx, trdStrategy.ConvMarket)
+	price, err := get_avg_price(ctx, trdStrategy.ConvMarket)
 	update_trd_req(weightAvgPrice, trd)
+	if err != nil {
+		return err
+	}
 	err := parse_market_min_notional(ctx, price, qty)
 	if err != nil {
 		return err
 	}
-	order := market_order(ctx, trdStrategy.ConvMarket, BUY, qty)
+	order, err := market_order(ctx, trdStrategy.ConvMarket, BUY, qty)
 	update_trd_order(weightOrder, trd)
+	if err != nil {
+		return err
+	}
 	if order.Status == "REJECTED" {
 		err := errors.New("Order was rejected.")
 		return err
@@ -181,7 +196,7 @@ func conv_order(ctx context.Context, trd *trdInfo) error {
 }
 
 //TODO implement ctx. Cancel ctx on err
-func parse_price(ctx context.Context, errCh chan error, resultCh chan float64, price float64, market string) {
+func parse_price(ctx context.Context, errCh chan error, resultCh chan float64, price float64, market string) error {
 	doneCh := make(chan bool)
 	go func() {
 		//PRICE_FILTER
@@ -197,7 +212,11 @@ func parse_price(ctx context.Context, errCh chan error, resultCh chan float64, p
 		price, _ := strconv.ParseFloat(fmt.Sprintf(fmtcmd, price), 64)
 
 		//PERCENT_PRICE
-		avgPrice := get_avg_price(ctx)
+		avgPrice, err := get_avg_price(ctx)
+		if err != nil {
+			errCh <- err
+			return
+		}
 		multipDown := symbolsFilters[market]["PERCENT_PRICE"].MultipDown
 		mulipUp := symbolsFilters[market]["PERCENT_PRICE"].MultipUp
 		if price < avgPrice*multipDown || price > avgPrice*mulipUp {

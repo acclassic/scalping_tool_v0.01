@@ -456,7 +456,7 @@ func listen_ws(wsConn *websocket.Conn) {
 
 func init_markets_price(ctx context.Context, symbol string, wg *sync.WaitGroup) {
 	defer wg.Done()
-	oBook := get_order_book(ctx, symbol)
+	oBook, _ := get_order_book(ctx, symbol)
 	switch symbol {
 	case trdStrategy.BuyMarket:
 		price, _ := oBook.Asks[pos][0].Float64()
@@ -498,15 +498,21 @@ func Exec_strat() {
 	//Set Trd Strat
 	set_trd_strat()
 	//Get WS Connection
-	ws := connect_ws()
+	wsConn := connect_ws()
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, ctxKey("reqWeight"), true)
 	//Set ExInfos
-	exInfos := get_ex_info(ctx, strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
+	exInfos, err := get_ex_info(ctx, strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
+	if err != nil {
+		apintrf.Sys_logger().Fatalf("WARNING: Execution stopped because unable to get exInfos. %s", err)
+	}
 	set_symbols_filters(exInfos.Symbols)
 	set_rLimits(exInfos.RateLimits)
 	//Set accFunds
-	funds := get_acc_funds(ctx, "EUR")
+	funds, err := get_acc_funds(ctx, "EUR")
+	if err != nil {
+		apintrf.Sys_logger().Fatalf("WARNING: Execution stopped because unable to get funds. %s", err)
+	}
 	trdFunds = funds
 	//Init Maret prices
 	var wg sync.WaitGroup
@@ -518,5 +524,5 @@ func Exec_strat() {
 	//Subscribe to WS book stream
 	subscribeStream(wsConn, strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
 	//Start service handler
-	service_handler(ctx, ws)
+	service_handler(ctx, wsConn)
 }
