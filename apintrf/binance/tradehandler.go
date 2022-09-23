@@ -26,6 +26,10 @@ func trd_handler(ctx context.Context) {
 	for trd_signal() == true {
 		select {
 		case trdCh <- true:
+			//Check if ctx status before starting trd
+			if ctx.Err != nil {
+				return
+			}
 			trd := trdInfo{
 				reqWeight: weightTrd,
 				rawReqs:   5,
@@ -79,6 +83,9 @@ func trd_handler(ctx context.Context) {
 
 //TODO check this on testnet
 func buy_order(ctx context.Context, trd *trdInfo) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	mPrice := buyMarketP.get_price()
 	price := trdFunds.get_funds(trdStrategy.TrdRate)
@@ -118,6 +125,9 @@ func buy_order(ctx context.Context, trd *trdInfo) error {
 }
 
 func sell_order(ctx context.Context, trd *trdInfo) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	qty := trd.sellAmnt
 
@@ -148,6 +158,9 @@ func sell_order(ctx context.Context, trd *trdInfo) error {
 }
 
 func conv_order(ctx context.Context, trd *trdInfo) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	qty := trd.convAmnt
 

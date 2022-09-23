@@ -45,23 +45,23 @@ func create_httpReq(method, url string, qParams queryParams, s bool, weight int)
 }
 
 func http_req_handler(ctx context.Context, reqParams httpReq) (*http.Response, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	//Check if reqWeight has to be subtracted or not
 	if ctx.Value(ctxKey("updateCtrs")) == true {
 		weightCtr := exLimitsCtrs.reqWeight.get_counter()
 		reqCtr := exLimitsCtrs.rawReq.get_counter()
 		//Check if ctrs allow req execution. If not don't execute and return error.
 		if weightCtr-reqParams.weight >= 0 && reqCtr-1 >= 0 {
-			exLimitsCtrs.reqWeight.sub(reqParams.weight)
-			exLimitsCtrs.rawReq.update_counter(1)
+			exLimitsCtrs.reqWeight.decrease_counter(reqParams.weight)
+			exLimitsCtrs.rawReq.decrease_counter(1)
 		} else {
 			//TODO see if needs to be logged
-			err := errors.New("ERROR: Counters low. API request could not be executed.")
+			err := errors.New("Counters low. API request could not be executed.")
 			return nil, err
 		}
 	}
-	//TODO check if needed
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 	url, body := create_req_params(reqParams)
 	req, err := http.NewRequestWithContext(ctx, reqParams.method, url, body)
 	if err != nil {
@@ -83,8 +83,7 @@ func http_req_handler(ctx context.Context, reqParams httpReq) (*http.Response, e
 	}
 	//Send resp to error_handler if not 200 or return value
 	if resp.StatusCode != 200 {
-		//TODO clean this up. How to handle errors from Client.Do()
-		error_handler()
+		error_handler(ctx, resp)
 	} else {
 		return resp
 	}
@@ -148,7 +147,10 @@ func check_rLimits(weight int) bool {
 	}
 }
 
-func error_handler(resp *http.Response) {
+func error_handler(ctx context.Context, resp *http.Response) {
+	if ctx.Err() != nil {
+		return
+	}
 	if resp.StatusCode != 200 {
 		switch resp.StatusCode {
 		case 429:

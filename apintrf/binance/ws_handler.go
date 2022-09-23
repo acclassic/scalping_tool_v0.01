@@ -1,7 +1,6 @@
 package binance
 
 import (
-	"context"
 	"strings"
 	"sync"
 )
@@ -30,14 +29,13 @@ func (mp *marketPrice) get_price(wg *sync.WaitGroup) float64 {
 	return mp.price
 }
 
-func resp_hander(ctx context.Context, resp *WsStream) {
+func resp_hander(resp *WsStream) {
 	//TODO check of errors are handled and how a disconect is handled.
 	//If resp empty ignore, means sendet req was sucessfull
 	if len(resp.Data.Asks) <= 0 && len(resp.Data.Bids) <= 0 {
 		return
 	}
 
-	////TODO change trim to split after @ and take first slice
 	markt := strings.TrimSuffix(resp.Stream, "@depth5@100ms")
 	switch strings.ToUpper(markt) {
 	case trdStrategy.BuyMarket:

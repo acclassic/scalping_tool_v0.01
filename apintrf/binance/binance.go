@@ -237,7 +237,10 @@ type ExFilters struct {
 }
 
 //TODO change return to pointer
-func get_ex_info(ctx context.Context, buyMarket, sellMarket, convMarket string) ExInfo {
+func get_ex_info(ctx context.Context, buyMarket, sellMarket, convMarket string) (ExInfo, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	symbols := fmt.Sprintf(`["%s","%s","%s"]`, buyMarket, sellMarket, convMarket)
 	qParams := queryParams{
 		"symbols": symbols,
@@ -247,7 +250,7 @@ func get_ex_info(ctx context.Context, buyMarket, sellMarket, convMarket string) 
 	defer resp.Body.Close()
 	var exInfo ExInfo
 	json.NewDecoder(resp.Body).Decode(&exInfo)
-	return exInfo
+	return exInfo, nil
 }
 
 func set_symbols_filters(marketsFilter []MarketEx) {
@@ -285,7 +288,10 @@ type BookDepth struct {
 	Asks [][]json.Number `json:"asks"`
 }
 
-func get_order_book(ctx context.Context, symbol string) BookDepth {
+func get_order_book(ctx context.Context, symbol string) (BookDepth, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	qParams := queryParams{"symbol": strings.ToUpper(symbol), "limit": "3"}
 	req := create_httpReq(http.MethodGet, "/api/v3/depth", qParams, false, weightOrdBook)
 	resp := http_req_handler(ctx, req)
@@ -293,7 +299,7 @@ func get_order_book(ctx context.Context, symbol string) BookDepth {
 	var orderBook BookDepth
 	//TODO maybe change json decoder to one liner
 	json.NewDecoder(resp.Body).Decode(&orderBook)
-	return orderBook
+	return orderBook, nil
 }
 
 type Funds struct {
@@ -306,7 +312,10 @@ type Balance struct {
 }
 
 //TODO test this on live to see if Fiat is aviable
-func get_acc_funds(ctx context.Context, asset string) float64 {
+func get_acc_funds(ctx context.Context, asset string) (float64, error) {
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
 	req := create_httpReq(http.MethodGet, "/api/v3/account", queryParams{}, false, weightAccInfo)
 	resp := http_req_handler(ctx, req)
 	defer resp.Body.Close()
@@ -314,13 +323,17 @@ func get_acc_funds(ctx context.Context, asset string) float64 {
 	json.NewDecoder(resp.Body).Decode(&funds)
 	for _, v := range funds.Balances {
 		if v.Asset == asset {
-			return v.Amount
+			return v.Amount, nil
 		}
 	}
-	return 0
+	err := fmt.Errorf("Could not find %s in funds.", asset)
+	return 0, err
 }
 
-func get_avg_price(ctx context.Context, symbol string) float64 {
+func get_avg_price(ctx context.Context, symbol string) (float64, error) {
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
 	qParams := queryParams{"symbol": symbol}
 	req := create_httpReq(http.MethodGet, "/api/v3/avgPrice", qParams, false, weightAvgPrice)
 	resp := http_req_handler(ctx, req)
@@ -328,7 +341,7 @@ func get_avg_price(ctx context.Context, symbol string) float64 {
 	var avgPrice map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&avgPrice)
 	price := avgPrice["price"].(float64)
-	return price
+	return price, nil
 }
 
 type OrderResp struct {
@@ -339,7 +352,10 @@ type OrderResp struct {
 	stratID int     `json:"strategyId"`
 }
 
-func market_order(ctx context.Context, symbol string, side trdMarket, qty float64) OrderResp {
+func market_order(ctx context.Context, symbol string, side trdMarket, qty float64) (OrderResp, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	//TODO test this
 	qParams := queryParams{
 		"symbol":           symbol,
@@ -358,12 +374,15 @@ func market_order(ctx context.Context, symbol string, side trdMarket, qty float6
 	//TODO check whick struct to implement and what resp needed
 	var order OrderResp
 	json.NewDecoder(resp.Body).Decode(&order)
-	return order
+	return order, nil
 }
 
 //TODO change side from string to trdMarket. Probably need to implement type
 //TODO implement strategyId for analytics. Pass form trd_handler()
-func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty float64) OrderResp {
+func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty float64) (OrderResp, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	//TODO check if time in force needs to be var
 	qParams := queryParams{
 		"symbol":           symbol,
@@ -379,7 +398,7 @@ func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty 
 	//TODO check whick struct to implement and what resp needed
 	var order OrderResp
 	json.NewDecoder(resp.Body).Decode(&order)
-	return order
+	return order, nil
 }
 
 type WsRequest struct {
@@ -424,31 +443,14 @@ type T struct {
 }
 
 // Get order book and cache result. Then listen to the WS for new orders and send result to the reps handler.
-func listen_ws(ctx context.Context, wsConn *websocket.Conn) {
-	//var wsResp TT
+func listen_ws(wsConn *websocket.Conn) {
 	var wsResp WsStream
-	//TODO add ctx value origin. Not needed but good
-	//TODO resolve problem with 429. Evt. CancelFunc needed
-	//ctx, cancel := context.WithCancel(ctx)
 	for {
 		err := websocket.JSON.Receive(wsConn, &wsResp)
 		if err != nil {
 			apintrf.Log_err().Panicf("Error reading request from WS: %s", err)
 		}
-		resp_hander(ctx, &wsResp)
-
-		//select { //case <-stopCh: //	cancel()
-		//	return
-		//default:
-		//	ctx = context.WithValue(ctx, "id", i)
-		//	err := websocket.JSON.Receive(wsConn, &wsResp)
-		//	//TODO how should this err be handled? Fatal? Retry after timeout?
-		//	if err != nil {
-		//		apintrf.Log_err().Panicf("Error reading request from WS: %s", err)
-		//	}
-		//	resp_hander(ctx, &wsResp)
-		//	fmt.Printf("Ctx %d send\n", i)
-		//}
+		resp_hander(&wsResp)
 	}
 }
 
@@ -489,6 +491,7 @@ func set_trd_strat() {
 }
 
 //TODO overthink if ctx value is needed
+//TODO implement reconect after 24h to websocket.
 func Exec_strat() {
 	//Set Api Config
 	set_api_config()
@@ -508,9 +511,9 @@ func Exec_strat() {
 	//Init Maret prices
 	var wg sync.WaitGroup
 	wg.Add(3)
-	init_markets_price(ctx, trdStrategy.BuyMarket, wg)
-	init_markets_price(ctx, trdStrategy.SellMarket, wg)
-	init_markets_price(ctx, trdStrategy.ConvMarket, wg)
+	go init_markets_price(ctx, trdStrategy.BuyMarket, wg)
+	go init_markets_price(ctx, trdStrategy.SellMarket, wg)
+	go init_markets_price(ctx, trdStrategy.ConvMarket, wg)
 	wg.Wait()
 	//Subscribe to WS book stream
 	subscribeStream(wsConn, strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
