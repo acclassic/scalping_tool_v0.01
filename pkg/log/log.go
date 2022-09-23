@@ -1,4 +1,4 @@
-package apintrf
+package log
 
 import (
 	"fmt"

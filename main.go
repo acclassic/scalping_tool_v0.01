@@ -1,7 +1,7 @@
 package main
 
 import (
-	"swap-trader/apintrf/binance"
+	"swap-trader/pkg/binance"
 )
 
 func main() {

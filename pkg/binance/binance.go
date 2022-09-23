@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"swap-trader/apintrf"
+	"swap-trader/pkg/log"
 	"sync"
 	"time"
 
@@ -61,7 +61,7 @@ func connect_ws() *websocket.Conn {
 	wsConfig, _ := websocket.NewConfig(config.WsAddress, config.WsOrigin)
 	wsConn, err := websocket.DialConfig(wsConfig)
 	if err != nil {
-		apintrf.Sys_Logger().Fatalf("WARNING: Could not connect to WS. %s", err)
+		log.Sys_logger().Fatalf("WARNING: Could not connect to WS. %s", err)
 	}
 	return wsConn
 }
@@ -69,12 +69,12 @@ func connect_ws() *websocket.Conn {
 func get_ws_config() WsConfig {
 	file, err := os.Open("config/ws.conf")
 	if err != nil {
-		apintrf.Sys_Logger().Fatalf("WARNING: Could not load WS config file. %s", err)
+		log.Sys_logger().Fatalf("WARNING: Could not load WS config file. %s", err)
 	}
 	var wsConfig WsConfig
-	err := json.NewDecoder(file).Decode(&wsConfig)
+	err = json.NewDecoder(file).Decode(&wsConfig)
 	if err != nil {
-		apintrf.Sys_Logger().Fatalf("WARNING: Could not decode WS config file. %s", err)
+		log.Sys_logger().Fatalf("WARNING: Could not decode WS config file. %s", err)
 	}
 	return wsConfig
 }
@@ -90,11 +90,11 @@ type ApiConfig struct {
 func set_api_config() {
 	file, err := os.Open("config/api.conf")
 	if err != nil {
-		apintrf.sys_Logger().Fatalf("WARNING: Could not load API config file. %s", err)
+		log.Sys_logger().Fatalf("WARNING: Could not load API config file. %s", err)
 	}
-	err := json.NewDecoder(file).Decode(api)
+	err = json.NewDecoder(file).Decode(api)
 	if err != nil {
-		apintrf.sys_Logger().Fatalf("WARNING: Could not decode API config file. %s", err)
+		log.Sys_logger().Fatalf("WARNING: Could not decode API config file. %s", err)
 	}
 }
 
@@ -106,13 +106,13 @@ func rLimits_handler(exLimits limitsCtrs) {
 	for {
 		select {
 		case <-exLimits.reqWeight.ticker:
-			exLimits.reqWeight.update_counter(exLimitsCtrs.reqWeight.resetCount)
+			exLimits.reqWeight.reset_counter(exLimitsCtrs.reqWeight.resetCount)
 		case <-exLimits.orders.ticker:
-			exLimits.orders.update_counter(exLimitsCtrs.orders.resetCount)
+			exLimits.orders.reset_counter(exLimitsCtrs.orders.resetCount)
 		case <-exLimits.maxOrders.ticker:
-			exLimits.maxOrders.update_counter(exLimitsCtrs.maxOrders.resetCount)
+			exLimits.maxOrders.reset_counter(exLimitsCtrs.maxOrders.resetCount)
 		case <-exLimits.rawReq.ticker:
-			exLimits.rawReq.update_counter(exLimitsCtrs.rawReq.resetCount)
+			exLimits.rawReq.reset_counter(exLimitsCtrs.rawReq.resetCount)
 		}
 	}
 }
@@ -138,21 +138,27 @@ func (c *rCounter) init_counter(n int, interval time.Duration) {
 }
 
 func (c *rCounter) decrease_counter(n int) {
-	c.mu.lock()
+	c.mu.Lock()
 	c.count = c.count - n
-	c.mu.unlock()
+	c.mu.Unlock()
 }
 
 func (c *rCounter) increase_counter(n int) {
-	c.mu.lock()
+	c.mu.Lock()
 	c.count = c.count + n
-	c.mu.unlock()
+	c.mu.Unlock()
 }
 
 func (c *rCounter) get_counter() int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.count
+}
+
+func (c *rCounter) reset_counter(n int) {
+	c.mu.Lock()
+	c.count = n
+	c.mu.Unlock()
 }
 
 func parse_limit_duration(n int, unit string) time.Duration {
@@ -239,14 +245,17 @@ type ExFilters struct {
 //TODO change return to pointer
 func get_ex_info(ctx context.Context, buyMarket, sellMarket, convMarket string) (ExInfo, error) {
 	if ctx.Err() != nil {
-		return nil, ctx.Err()
+		return ExInfo{}, ctx.Err()
 	}
 	symbols := fmt.Sprintf(`["%s","%s","%s"]`, buyMarket, sellMarket, convMarket)
 	qParams := queryParams{
 		"symbols": symbols,
 	}
 	req := create_httpReq(http.MethodGet, "/api/v3/exchangeInfo", qParams, false, weightExInfo)
-	resp := http_req_handler(ctx, req)
+	resp, err := http_req_handler(ctx, req)
+	if err != nil {
+		return ExInfo{}, err
+	}
 	defer resp.Body.Close()
 	var exInfo ExInfo
 	json.NewDecoder(resp.Body).Decode(&exInfo)
@@ -258,12 +267,7 @@ func set_symbols_filters(marketsFilter []MarketEx) {
 	for _, v := range marketsFilter {
 		for _, f := range v.Filters {
 			pricePrc := calc_precision(f.TickSize)
-			switch f.FType {
-			case "LOT_SIZE":
-				lotPrc := calc_precision(f.StepSize)
-			case "MARKET_LOT_SIZE":
-				mLotPrc := calc_precision(f.StepSize)
-			}
+			lotPrc := calc_precision(f.StepSize)
 			f.pricePrc = pricePrc
 			f.lotPrc = lotPrc
 			symbolsFilters[v.Symbol][f.FType] = f
@@ -276,7 +280,7 @@ func calc_precision(tickSize string) int {
 	s := strings.SplitAfter(tickSize, ".")
 	for _, v := range s[1] {
 		i++
-		if v == "1" {
+		if v == 1 {
 			return i
 		}
 	}
@@ -290,11 +294,14 @@ type BookDepth struct {
 
 func get_order_book(ctx context.Context, symbol string) (BookDepth, error) {
 	if ctx.Err() != nil {
-		return nil, ctx.Err()
+		return BookDepth{}, ctx.Err()
 	}
 	qParams := queryParams{"symbol": strings.ToUpper(symbol), "limit": "3"}
 	req := create_httpReq(http.MethodGet, "/api/v3/depth", qParams, false, weightOrdBook)
-	resp := http_req_handler(ctx, req)
+	resp, err := http_req_handler(ctx, req)
+	if err != nil {
+		return BookDepth{}, nil
+	}
 	defer resp.Body.Close()
 	var orderBook BookDepth
 	//TODO maybe change json decoder to one liner
@@ -317,7 +324,10 @@ func get_acc_funds(ctx context.Context, asset string) (float64, error) {
 		return 0, ctx.Err()
 	}
 	req := create_httpReq(http.MethodGet, "/api/v3/account", queryParams{}, false, weightAccInfo)
-	resp := http_req_handler(ctx, req)
+	resp, err := http_req_handler(ctx, req)
+	if err != nil {
+		return 0, err
+	}
 	defer resp.Body.Close()
 	var funds Funds
 	json.NewDecoder(resp.Body).Decode(&funds)
@@ -326,7 +336,7 @@ func get_acc_funds(ctx context.Context, asset string) (float64, error) {
 			return v.Amount, nil
 		}
 	}
-	err := fmt.Errorf("Could not find %s in funds.", asset)
+	err = fmt.Errorf("Could not find %s in funds.", asset)
 	return 0, err
 }
 
@@ -336,7 +346,10 @@ func get_avg_price(ctx context.Context, symbol string) (float64, error) {
 	}
 	qParams := queryParams{"symbol": symbol}
 	req := create_httpReq(http.MethodGet, "/api/v3/avgPrice", qParams, false, weightAvgPrice)
-	resp := http_req_handler(ctx, req)
+	resp, err := http_req_handler(ctx, req)
+	if err != nil {
+		return 0, err
+	}
 	defer req.body.Close()
 	var avgPrice map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&avgPrice)
@@ -354,7 +367,7 @@ type OrderResp struct {
 
 func market_order(ctx context.Context, symbol string, side trdMarket, qty float64) (OrderResp, error) {
 	if ctx.Err() != nil {
-		return nil, ctx.Err()
+		return OrderResp{}, ctx.Err()
 	}
 	//TODO test this
 	qParams := queryParams{
@@ -370,7 +383,10 @@ func market_order(ctx context.Context, symbol string, side trdMarket, qty float6
 		qParams["quantity"] = fmt.Sprint(qty)
 	}
 	req := create_httpReq(http.MethodPost, "/api/v3/order/test", qParams, true, weightOrder)
-	resp := http_req_handler(ctx, req)
+	resp, err := http_req_handler(ctx, req)
+	if err != nil {
+		return OrderResp{}, err
+	}
 	//TODO check whick struct to implement and what resp needed
 	var order OrderResp
 	json.NewDecoder(resp.Body).Decode(&order)
@@ -381,7 +397,7 @@ func market_order(ctx context.Context, symbol string, side trdMarket, qty float6
 //TODO implement strategyId for analytics. Pass form trd_handler()
 func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty float64) (OrderResp, error) {
 	if ctx.Err() != nil {
-		return nil, ctx.Err()
+		return OrderResp{}, ctx.Err()
 	}
 	//TODO check if time in force needs to be var
 	qParams := queryParams{
@@ -394,7 +410,10 @@ func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty 
 		"newOrderRespType": "RESULT",
 	}
 	req := create_httpReq(http.MethodPost, "/api/v3/order/test", qParams, true, weightOrder)
-	resp := http_req_handler(ctx, req)
+	resp, err := http_req_handler(ctx, req)
+	if err != nil {
+		return OrderResp{}, err
+	}
 	//TODO check whick struct to implement and what resp needed
 	var order OrderResp
 	json.NewDecoder(resp.Body).Decode(&order)
@@ -416,7 +435,7 @@ func (req WsRequest) Send_req(wsConn *websocket.Conn) {
 	err := websocket.JSON.Send(wsConn, req)
 
 	if err != nil {
-		apintrf.Log_err().Printf("Error sending request to WS: %s", err)
+		log.Sys_logger().Fatalf("WARNING: Execution stopped because WS request was faulty. %s", err)
 	}
 }
 
@@ -448,7 +467,7 @@ func listen_ws(wsConn *websocket.Conn) {
 	for {
 		err := websocket.JSON.Receive(wsConn, &wsResp)
 		if err != nil {
-			apintrf.Log_err().Panicf("Error reading request from WS: %s", err)
+			log.Sys_logger().Fatalf("WARNING: Execution stopped because WS response was faulty. %s", err)
 		}
 		resp_hander(&wsResp)
 	}
@@ -459,13 +478,13 @@ func init_markets_price(ctx context.Context, symbol string, wg *sync.WaitGroup) 
 	oBook, _ := get_order_book(ctx, symbol)
 	switch symbol {
 	case trdStrategy.BuyMarket:
-		price, _ := oBook.Asks[pos][0].Float64()
+		price, _ := oBook.Asks[0][0].Float64()
 		buyMarketP.update_price(price)
 	case trdStrategy.SellMarket:
-		price, _ := oBook.Bids[pos][0].Float64()
+		price, _ := oBook.Bids[0][0].Float64()
 		sellMarketP.update_price(price)
 	case trdStrategy.ConvMarket:
-		price, _ := oBook.Asks[pos][0].Float64()
+		price, _ := oBook.Asks[0][0].Float64()
 		convMarketP.update_price(price)
 	}
 }
@@ -482,11 +501,11 @@ type TrdStratConfig struct {
 func set_trd_strat() {
 	file, err := os.Open("config/strat.conf")
 	if err != nil {
-		apintrf.sys_Logger().Fatalf("WARNING: Could not load API config file. %s", err)
+		log.Sys_logger().Fatalf("WARNING: Could not load API config file. %s", err)
 	}
-	err := json.NewDecoder(file).Decode(&trdStrategy)
+	err = json.NewDecoder(file).Decode(&trdStrategy)
 	if err != nil {
-		apintrf.sys_Logger().Fatalf("WARNING: Could not decode API config file. %s", err)
+		log.Sys_logger().Fatalf("WARNING: Could not decode API config file. %s", err)
 	}
 }
 
@@ -502,27 +521,27 @@ func Exec_strat() {
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, ctxKey("reqWeight"), true)
 	//Set ExInfos
-	exInfos, err := get_ex_info(ctx, strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
+	exInfos, err := get_ex_info(ctx, trdStrategy.BuyMarket, trdStrategy.SellMarket, trdStrategy.ConvMarket)
 	if err != nil {
-		apintrf.Sys_logger().Fatalf("WARNING: Execution stopped because unable to get exInfos. %s", err)
+		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to get exInfos. %s", err)
 	}
 	set_symbols_filters(exInfos.Symbols)
 	set_rLimits(exInfos.RateLimits)
-	//Set accFunds
+	//Set accFunds. No need to go over sync method because the value is initiated and not accessed concurrent.
 	funds, err := get_acc_funds(ctx, "EUR")
 	if err != nil {
-		apintrf.Sys_logger().Fatalf("WARNING: Execution stopped because unable to get funds. %s", err)
+		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to get funds. %s", err)
 	}
-	trdFunds = funds
+	trdFunds.amount = funds
 	//Init Maret prices
 	var wg sync.WaitGroup
 	wg.Add(3)
-	go init_markets_price(ctx, trdStrategy.BuyMarket, wg)
-	go init_markets_price(ctx, trdStrategy.SellMarket, wg)
-	go init_markets_price(ctx, trdStrategy.ConvMarket, wg)
+	go init_markets_price(ctx, trdStrategy.BuyMarket, &wg)
+	go init_markets_price(ctx, trdStrategy.SellMarket, &wg)
+	go init_markets_price(ctx, trdStrategy.ConvMarket, &wg)
 	wg.Wait()
 	//Subscribe to WS book stream
-	subscribeStream(wsConn, strat.BuyMarket, strat.SellMarket, strat.ConvMarket)
+	subscribeStream(wsConn, trdStrategy.BuyMarket, trdStrategy.SellMarket, trdStrategy.ConvMarket)
 	//Start service handler
 	service_handler(ctx, wsConn)
 }

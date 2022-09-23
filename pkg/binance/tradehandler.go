@@ -336,7 +336,7 @@ func parse_market_min_notional(ctx context.Context, price, qty float64, market s
 	return nil
 }
 
-func retry_order(n int, f func(ctx, trd *trdInfo), market string) err {
+func retry_order(n int, f func(ctx, trd *trdInfo), market string) error {
 	ctx = context.WithValue(ctx, ctxKey("reqWeight"), true)
 	for i := 0; i < n; i++ {
 		err := f(ctx, trd)
