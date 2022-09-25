@@ -14,17 +14,18 @@ import (
 	"golang.org/x/net/websocket"
 )
 
-//TODO see if trdMarket needs to be new type
 const (
 	BUY  trdMarket = "BUY"
 	SELL trdMarket = "SELL"
 	CONV trdMarket = "CONV"
 )
 
-var cancelCh = make(chan time.Duration)
+var api *ApiConfig
 var trdFunds accFunds
+var exLimitsCtrs limitsCtrs
+var symbolsFilters = make(map[string]map[string]ExFilters)
+var trdStrategy TrdStratConfig
 
-//TODO use this to check if the weight and req has to be counted against the ctrs
 type ctxKey string
 
 type trdMarket string
@@ -79,8 +80,6 @@ func get_ws_config() WsConfig {
 	return wsConfig
 }
 
-var api *ApiConfig
-
 type ApiConfig struct {
 	ApiKey    string
 	SecretKey string
@@ -97,8 +96,6 @@ func set_api_config() {
 		log.Sys_logger().Fatalf("WARNING: Could not decode API config file. %s", err)
 	}
 }
-
-var exLimitsCtrs limitsCtrs
 
 //TODO check how this is implemented.
 func rLimits_handler(exLimits limitsCtrs) {
@@ -199,8 +196,6 @@ func set_rLimits(rLimits []RLimits) {
 	}
 }
 
-var symbolsFilters = make(map[string]map[string]ExFilters)
-
 type ExInfo struct {
 	RateLimits []RLimits  `json:"rateLimits"`
 	Symbols    []MarketEx `json:"symbols"`
@@ -242,9 +237,9 @@ type ExFilters struct {
 }
 
 //TODO change return to pointer
-func get_ex_info(ctx context.Context, buyMarket, sellMarket, convMarket string) (ExInfo, error) {
+func get_ex_info(ctx context.Context, buyMarket, sellMarket, convMarket string) (*ExInfo, error) {
 	if ctx.Err() != nil {
-		return ExInfo{}, ctx.Err()
+		return nil, ctx.Err()
 	}
 	symbols := fmt.Sprintf(`["%s","%s","%s"]`, buyMarket, sellMarket, convMarket)
 	qParams := queryParams{
@@ -253,11 +248,11 @@ func get_ex_info(ctx context.Context, buyMarket, sellMarket, convMarket string) 
 	req := create_httpReq(http.MethodGet, "/api/v3/exchangeInfo", qParams, false, weightExInfo)
 	resp, err := http_req_handler(ctx, req)
 	if err != nil {
-		return ExInfo{}, err
+		return nil, err
 	}
 	defer resp.Body.Close()
-	var exInfo ExInfo
-	json.NewDecoder(resp.Body).Decode(&exInfo)
+	var exInfo *ExInfo
+	json.NewDecoder(resp.Body).Decode(exInfo)
 	return exInfo, nil
 }
 
@@ -291,20 +286,20 @@ type BookDepth struct {
 	Asks [][]json.Number `json:"asks"`
 }
 
-func get_order_book(ctx context.Context, symbol string) (BookDepth, error) {
+func get_order_book(ctx context.Context, symbol string) (*BookDepth, error) {
 	if ctx.Err() != nil {
-		return BookDepth{}, ctx.Err()
+		return nil, ctx.Err()
 	}
 	qParams := queryParams{"symbol": strings.ToUpper(symbol), "limit": "3"}
 	req := create_httpReq(http.MethodGet, "/api/v3/depth", qParams, false, weightOrdBook)
 	resp, err := http_req_handler(ctx, req)
 	if err != nil {
-		return BookDepth{}, nil
+		return nil, nil
 	}
 	defer resp.Body.Close()
-	var orderBook BookDepth
+	var orderBook *BookDepth
 	//TODO maybe change json decoder to one liner
-	json.NewDecoder(resp.Body).Decode(&orderBook)
+	json.NewDecoder(resp.Body).Decode(orderBook)
 	return orderBook, nil
 }
 
@@ -364,9 +359,9 @@ type OrderResp struct {
 	stratID int     `json:"strategyId"`
 }
 
-func market_order(ctx context.Context, symbol string, side trdMarket, qty float64) (OrderResp, error) {
+func market_order(ctx context.Context, symbol string, side trdMarket, qty float64) (*OrderResp, error) {
 	if ctx.Err() != nil {
-		return OrderResp{}, ctx.Err()
+		return nil, ctx.Err()
 	}
 	//TODO test this
 	qParams := queryParams{
@@ -384,19 +379,19 @@ func market_order(ctx context.Context, symbol string, side trdMarket, qty float6
 	req := create_httpReq(http.MethodPost, "/api/v3/order/test", qParams, true, weightOrder)
 	resp, err := http_req_handler(ctx, req)
 	if err != nil {
-		return OrderResp{}, err
+		return nil, err
 	}
 	//TODO check whick struct to implement and what resp needed
-	var order OrderResp
-	json.NewDecoder(resp.Body).Decode(&order)
+	var order *OrderResp
+	json.NewDecoder(resp.Body).Decode(order)
 	return order, nil
 }
 
 //TODO change side from string to trdMarket. Probably need to implement type
 //TODO implement strategyId for analytics. Pass form trd_handler()
-func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty float64) (OrderResp, error) {
+func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty float64) (*OrderResp, error) {
 	if ctx.Err() != nil {
-		return OrderResp{}, ctx.Err()
+		return nil, ctx.Err()
 	}
 	//TODO check if time in force needs to be var
 	qParams := queryParams{
@@ -411,11 +406,11 @@ func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty 
 	req := create_httpReq(http.MethodPost, "/api/v3/order/test", qParams, true, weightOrder)
 	resp, err := http_req_handler(ctx, req)
 	if err != nil {
-		return OrderResp{}, err
+		return nil, err
 	}
 	//TODO check whick struct to implement and what resp needed
-	var order OrderResp
-	json.NewDecoder(resp.Body).Decode(&order)
+	var order *OrderResp
+	json.NewDecoder(resp.Body).Decode(order)
 	return order, nil
 }
 
@@ -452,14 +447,6 @@ func subscribeStream(wsConn *websocket.Conn, markets ...string) {
 	wsReq.Send_req(wsConn)
 }
 
-type TT struct {
-	Data T `json:"data"`
-}
-type T struct {
-	S  int64  `json:"E"`
-	SS string `json:"e"`
-}
-
 // Get order book and cache result. Then listen to the WS for new orders and send result to the reps handler.
 func listen_ws(wsConn *websocket.Conn) {
 	var wsResp WsStream
@@ -487,8 +474,6 @@ func init_markets_price(ctx context.Context, symbol string, wg *sync.WaitGroup) 
 		convMarketP.update_price(price)
 	}
 }
-
-var trdStrategy TrdStratConfig
 
 type TrdStratConfig struct {
 	BuyMarket  string

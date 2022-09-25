@@ -22,7 +22,8 @@ type trdInfo struct {
 }
 
 func trd_handler(ctx context.Context) {
-	for trd_signal() == true {
+	trdSignal, buyPrice := trd_signal()
+	for trdSignal == true {
 		select {
 		case trdCh <- true:
 			//Check if ctx status before starting trd
@@ -33,6 +34,7 @@ func trd_handler(ctx context.Context) {
 				reqWeight: weightTrd,
 				rawReqs:   5,
 				orders:    3,
+				buyPrice:  buyPrice,
 			}
 			//Block limitsCtrs to ensure trd execution. Trd ctrs will be used to free exLimitsCtrs in case of an error.
 			exLimitsCtrs.reqWeight.decrease_counter(trd.reqWeight)
@@ -352,17 +354,15 @@ func retry_order(ctx context.Context, n int, market trdMarket, trd *trdInfo) err
 	return err
 }
 
-func trd_signal() bool {
+func trd_signal() (bool, float64) {
 	//TODO evtl. include sync.Waitgroup and goroutine
 	buyPrice := buyMarketP.get_price()
 	sellPrice := sellMarketP.get_price()
 	convPrice := convMarketP.get_price()
 	if m := sellPrice/convPrice - buyPrice; m > 0 {
-		fmt.Println(m)
-		return true
+		return true, buyPrice
 	} else {
-		fmt.Println(m)
-		return false
+		return false, 0
 	}
 }
 

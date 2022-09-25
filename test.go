@@ -2,13 +2,14 @@ package main
 
 import (
 	"fmt"
-	"strings"
 )
 
 func main() {
-	f := "0.00100000"
-	s := strings.SplitAfter(f, ".")
-	for _, v := range s[1] {
-		fmt.Printf("%[1]T, %[1]s\n", v)
+	if b, f := test(); b == true {
+		fmt.Println(b, f)
 	}
+}
+
+func test() (bool, float64) {
+	return true, 10.5
 }
