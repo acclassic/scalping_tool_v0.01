@@ -11,7 +11,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"swap-trader/apintrf"
+	"swap-trader/pkg/log"
 	"time"
 )
 
@@ -66,7 +66,7 @@ func http_req_handler(ctx context.Context, reqParams httpReq) (*http.Response, e
 	req, err := http.NewRequestWithContext(ctx, reqParams.method, url, body)
 	if err != nil {
 		//TODO see if only log or panic necessary
-		apintrf.Log_err().Printf("ERROR: Request '%s' could not be created. %s\n", url, err)
+		log.Sys_logger().Printf("ERROR: Request '%s' could not be created. %s\n", url, err)
 	}
 	//Add header for secure connection and content-type for post req
 	if reqParams.secure == true {
@@ -79,13 +79,15 @@ func http_req_handler(ctx context.Context, reqParams httpReq) (*http.Response, e
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		apintrf.Log_err().Printf("ERROR: Sending request '%s' resulted in an error. %s\n", url, err)
+		log.Sys_logger().Printf("ERROR: Sending request '%s' resulted in an error. %s\n", url, err)
 	}
 	//Send resp to error_handler if not 200 or return value
 	if resp.StatusCode != 200 {
 		error_handler(ctx, resp)
+		err = fmt.Errorf("ERROR: HTTP response not 200. %s", resp.Status)
+		return nil, err
 	} else {
-		return resp
+		return resp, nil
 	}
 }
 
@@ -155,7 +157,7 @@ func error_handler(ctx context.Context, resp *http.Response) {
 		switch resp.StatusCode {
 		case 429:
 			if waitTime := resp.Header.Get("Retry-After"); waitTime != "" {
-				apintrf.Log_err().Fatalln("WARNING: App stopped. HTTP Resp returned empty 'Retry-After' Header. Check Binance support.")
+				log.Sys_logger().Fatalln("WARNING: App stopped. HTTP Resp returned empty 'Retry-After' Header. Check Binance support.")
 			} else {
 				n, _ := strconv.Atoi(waitTime)
 				d := time.Duration(n) * time.Second

@@ -18,14 +18,15 @@ func service_handler(ctx context.Context, ws *websocket.Conn) {
 	go listen_ws(ws)
 	go trd_handler(ctx)
 
-	restartCh = make(chan bool)
+	restartCh := make(chan bool)
 	for {
 		select {
 		case d := <-timeoutCh:
+			ctxCancel()
 			go timeout_reqs(restartCh, d)
 			break
 		case <-restartCh:
-			ctx, cxtCanctxCancel = context.WithCancel(parentCtx)
+			ctx, ctxCancel = context.WithCancel(parentCtx)
 			go trd_handler(ctx)
 			break
 		}

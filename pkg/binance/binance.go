@@ -239,7 +239,6 @@ type ExFilters struct {
 	MaxNumOrders  int     `json:"maxNumOrders,string"`
 	pricePrc      int
 	lotPrc        int
-	mLotPrc       int
 }
 
 //TODO change return to pointer

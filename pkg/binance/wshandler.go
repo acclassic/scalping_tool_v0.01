@@ -22,10 +22,9 @@ func (mp *marketPrice) update_price(price float64) {
 }
 
 //Read order prices for markets.
-func (mp *marketPrice) get_price(wg *sync.WaitGroup) float64 {
+func (mp *marketPrice) get_price() float64 {
 	mp.mu.RLock()
 	defer mp.mu.RUnlock()
-	defer wg.Done()
 	return mp.price
 }
 

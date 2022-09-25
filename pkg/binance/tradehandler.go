@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"sync"
 )
 
 //TODO check if possible to only get avgPrice once and pass to other funcs.
@@ -42,27 +41,27 @@ func trd_handler(ctx context.Context) {
 			exLimitsCtrs.maxOrders.decrease_counter(trd.orders)
 
 			ctx = context.WithValue(ctx, ctxKey("reqWeight"), false)
-			err := buy_order(ctx, trd)
+			err := buy_order(ctx, &trd)
 			if err != nil {
-				unblock_limit_ctrs(trd)
+				unblock_limit_ctrs(&trd)
 				<-trdCh
 			}
 
 			//TODO check the loop again. This way it will free the chan on the first itiration
 			// If order can't be sold retry 3 times. If sold continue to conv_order or drop trd and free chan.
-			err = sell_order(ctx, trd)
+			err = sell_order(ctx, &trd)
 			if err != nil {
-				err := retry_order(3, sell_order(ctx, trd), trdStrategy.SellMarket)
+				err := retry_order(ctx, 3, SELL, &trd)
 				if err != nil {
-					unblock_limit_ctrs(trd)
+					unblock_limit_ctrs(&trd)
 					<-trdCh
 				}
 			}
 
 			// If order can't be sold retry 3 times. If sold continue to log and end trd or drop trd and free chan.
-			err = conv_order(ctx, trd)
+			err = conv_order(ctx, &trd)
 			if err != nil {
-				err := retry_order(3, conv_order(ctx, trd), trdStrategy.ConvMarket)
+				err := retry_order(ctx, 3, CONV, &trd)
 				if err != nil {
 					//TODO log err
 					<-trdCh
@@ -98,10 +97,10 @@ func buy_order(ctx context.Context, trd *trdInfo) error {
 	go parse_price(ctx, errCh, priceCh, price, trdStrategy.BuyMarket)
 	go parse_qty(ctx, errCh, qtyCh, qty, trdStrategy.BuyMarket)
 	select {
-	case price <- priceCh:
+	case price := <-priceCh:
 		select {
-		case qty <- qtyCh:
-			err := parse_min_notional(ctx, price, qty)
+		case qty := <-qtyCh:
+			err := parse_min_notional(ctx, price, qty, trdStrategy.BuyMarket)
 			if err != nil {
 				return err
 			}
@@ -139,13 +138,13 @@ func sell_order(ctx context.Context, trd *trdInfo) error {
 	errCh := make(chan error)
 	go parse_market_qty(ctx, errCh, qtyCh, qty, trdStrategy.SellMarket)
 	select {
-	case qty <- qtyCh:
+	case qty := <-qtyCh:
 		price, err := get_avg_price(ctx, trdStrategy.SellMarket)
 		update_trd_req(weightAvgPrice, trd)
 		if err != nil {
 			return err
 		}
-		err := parse_market_min_notional(ctx, price, qty)
+		err = parse_market_min_notional(ctx, price, qty, trdStrategy.SellMarket)
 		if err != nil {
 			return err
 		}
@@ -170,7 +169,6 @@ func conv_order(ctx context.Context, trd *trdInfo) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	ctx, cancel := context.WithCancel(ctx)
 	qty := trd.convAmnt
 
 	//No need to check price or lot filter because by using quoteOrderQty the lot filter is respected.
@@ -179,7 +177,7 @@ func conv_order(ctx context.Context, trd *trdInfo) error {
 	if err != nil {
 		return err
 	}
-	err := parse_market_min_notional(ctx, price, qty)
+	err = parse_market_min_notional(ctx, price, qty, trdStrategy.ConvMarket)
 	if err != nil {
 		return err
 	}
@@ -202,17 +200,17 @@ func parse_price(ctx context.Context, errCh chan error, resultCh chan float64, p
 		//PRICE_FILTER
 		minPrice := symbolsFilters[market]["PRICE_FILTER"].MinPrice
 		maxPrice := symbolsFilters[market]["PRICE_FILTER"].MaxPrice
-		precision := symbolsFilters[market]["PRICE_FILTER"].precision
+		precision := symbolsFilters[market]["PRICE_FILTER"].lotPrc
 		if price < minPrice || price > maxPrice {
 			err := errors.New("Price filter not respected.")
 			errCh <- err
 			return
 		}
 		fmtCmd := fmt.Sprint("%.", precision, "f")
-		price, _ := strconv.ParseFloat(fmt.Sprintf(fmtcmd, price), 64)
+		price, _ := strconv.ParseFloat(fmt.Sprintf(fmtCmd, price), 64)
 
 		//PERCENT_PRICE
-		avgPrice, err := get_avg_price(ctx)
+		avgPrice, err := get_avg_price(ctx, market)
 		if err != nil {
 			errCh <- err
 			return
@@ -230,15 +228,15 @@ func parse_price(ctx context.Context, errCh chan error, resultCh chan float64, p
 
 	select {
 	case <-ctx.Done():
-		return
+		return ctx.Err()
 	case <-doneCh:
 		resultCh <- price
-		return
+		return nil
 	}
 }
 
 func parse_qty(ctx context.Context, errCh chan error, resultCh chan float64, qty float64, market string) {
-	doneCh := make(chan bool)
+	doneCh := make(chan float64)
 	go func() {
 		minQty := symbolsFilters[market]["LOT_SIZE"].MinQty
 		maxQty := symbolsFilters[market]["LOT_SIZE"].MaxQty
@@ -249,39 +247,39 @@ func parse_qty(ctx context.Context, errCh chan error, resultCh chan float64, qty
 			return
 		}
 		fmtCmd := fmt.Sprint("%.", precision, "f")
-		qty, _ := strconv.ParseFloat(fmt.Sprintf(fmtcmd, qty), 64)
-		doneCh <- true
+		qty, _ := strconv.ParseFloat(fmt.Sprintf(fmtCmd, qty), 64)
+		doneCh <- qty
 	}()
 
 	select {
 	case <-ctx.Done():
 		return
-	case <-doneCh:
+	case qty := <-doneCh:
 		resultCh <- qty
 		return
 	}
 }
 
 func parse_market_qty(ctx context.Context, errCh chan error, resultCh chan float64, qty float64, market string) {
-	doneCh := make(chan bool)
+	doneCh := make(chan float64)
 	go func() {
 		minQty := symbolsFilters[market]["MARKET_LOT_SIZE"].MinQty
 		maxQty := symbolsFilters[market]["MARKET_LOT_SIZE"].MaxQty
-		precision := symbolsFilters[market]["MARKET_LOT_SIZE"].mLotPrc
+		precision := symbolsFilters[market]["MARKET_LOT_SIZE"].lotPrc
 		if qty < minQty || qty > maxQty {
 			err := errors.New("Lot filter not respected.")
 			errCh <- err
 			return
 		}
 		fmtCmd := fmt.Sprint("%.", precision, "f")
-		qty, _ := strconv.ParseFloat(fmt.Sprintf(fmtcmd, qty), 64)
-		doneCh <- true
+		qty, _ := strconv.ParseFloat(fmt.Sprintf(fmtCmd, qty), 64)
+		doneCh <- qty
 	}()
 
 	select {
 	case <-ctx.Done():
 		return
-	case <-doneCh:
+	case qty := <-doneCh:
 		resultCh <- qty
 		return
 	}
@@ -315,9 +313,9 @@ func parse_market_min_notional(ctx context.Context, price, qty float64, market s
 			err := errors.New("Min Notional filter not respected")
 			return err
 		}
-	} else if minNotional == true {
-		if maxNotional == true {
-			if price*qty < minNotional || price*qty > maxNotional {
+	} else if minApplys == true {
+		if maxApplys == true {
+			if price*qty < minNotional && price*qty > maxNotional {
 				err := errors.New("Min Notional filter not respected")
 				return err
 			}
@@ -327,7 +325,7 @@ func parse_market_min_notional(ctx context.Context, price, qty float64, market s
 				return err
 			}
 		}
-	} else if maxNotional == true {
+	} else if maxApplys == true {
 		if price*qty > maxNotional {
 			err := errors.New("Min Notional filter not respected")
 			return err
@@ -336,26 +334,29 @@ func parse_market_min_notional(ctx context.Context, price, qty float64, market s
 	return nil
 }
 
-func retry_order(n int, f func(ctx, trd *trdInfo), market string) error {
+func retry_order(ctx context.Context, n int, market trdMarket, trd *trdInfo) error {
 	ctx = context.WithValue(ctx, ctxKey("reqWeight"), true)
+	var err error
 	for i := 0; i < n; i++ {
-		err := f(ctx, trd)
+		switch market {
+		case SELL:
+			err = sell_order(ctx, trd)
+		case CONV:
+			err = conv_order(ctx, trd)
+		}
 		if err == nil {
 			return nil
 		}
 	}
-	err := fmt.Errorf("Retried to execute order %d time failed. Order info: %s. Market: %s.", n, trd, market)
+	err = fmt.Errorf("Retried to execute order %d times failed. Order info: %s. Market: %s. Error: %s", n, trd, market, err)
 	return err
 }
 
 func trd_signal() bool {
 	//TODO evtl. include sync.Waitgroup and goroutine
-	var wg *sync.WaitGroup
-	wg.Add(3)
-	buyPrice := buyMarketP.get_price(wg)
-	sellPrice := sellMarketP.get_price(wg)
-	convPrice := convMarketP.get_price(wg)
-	wg.Wait()
+	buyPrice := buyMarketP.get_price()
+	sellPrice := sellMarketP.get_price()
+	convPrice := convMarketP.get_price()
 	if m := sellPrice/convPrice - buyPrice; m > 0 {
 		fmt.Println(m)
 		return true
@@ -365,12 +366,12 @@ func trd_signal() bool {
 	}
 }
 
-func update_trd_req(weight, rawReq int, trd *trdInfo) {
+func update_trd_req(weight int, trd *trdInfo) {
 	trd.reqWeight = trd.reqWeight - weight
 	trd.rawReqs = trd.rawReqs - 1
 }
 
-func update_trd_order(weight, rawReq int, trd *trdInfo) {
+func update_trd_order(weight int, trd *trdInfo) {
 	trd.reqWeight = trd.reqWeight - weight
 	trd.rawReqs = trd.rawReqs - 1
 	trd.orders = trd.orders - 1
