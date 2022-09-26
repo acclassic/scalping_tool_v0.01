@@ -22,62 +22,64 @@ type trdInfo struct {
 }
 
 func trd_handler(ctx context.Context) {
-	trdSignal, buyPrice := trd_signal()
-	for trdSignal == true {
-		select {
-		case trdCh <- true:
-			//Check if ctx status before starting trd
-			if ctx.Err != nil {
-				return
-			}
-			trd := trdInfo{
-				reqWeight: weightTrd,
-				rawReqs:   5,
-				orders:    3,
-				buyPrice:  buyPrice,
-			}
-			//Block limitsCtrs to ensure trd execution. Trd ctrs will be used to free exLimitsCtrs in case of an error.
-			exLimitsCtrs.reqWeight.decrease_counter(trd.reqWeight)
-			exLimitsCtrs.rawReq.decrease_counter(trd.rawReqs)
-			exLimitsCtrs.orders.decrease_counter(trd.orders)
-			exLimitsCtrs.maxOrders.decrease_counter(trd.orders)
+	for {
+		trdSignal, buyPrice := trd_signal()
+		if trdSignal == true {
+			select {
+			case trdCh <- true:
+				//Check if ctx status before starting trd
+				if ctx.Err != nil {
+					return
+				}
+				trd := trdInfo{
+					reqWeight: weightTrd,
+					rawReqs:   5,
+					orders:    3,
+					buyPrice:  buyPrice,
+				}
+				//Block limitsCtrs to ensure trd execution. Trd ctrs will be used to free exLimitsCtrs in case of an error.
+				exLimitsCtrs.reqWeight.decrease_counter(trd.reqWeight)
+				exLimitsCtrs.rawReq.decrease_counter(trd.rawReqs)
+				exLimitsCtrs.orders.decrease_counter(trd.orders)
+				exLimitsCtrs.maxOrders.decrease_counter(trd.orders)
 
-			ctx = context.WithValue(ctx, ctxKey("reqWeight"), false)
-			err := buy_order(ctx, &trd)
-			if err != nil {
-				unblock_limit_ctrs(&trd)
-				<-trdCh
-			}
-
-			//TODO check the loop again. This way it will free the chan on the first itiration
-			// If order can't be sold retry 3 times. If sold continue to conv_order or drop trd and free chan.
-			err = sell_order(ctx, &trd)
-			if err != nil {
-				err := retry_order(ctx, 3, SELL, &trd)
+				ctx = context.WithValue(ctx, ctxKey("reqWeight"), false)
+				err := buy_order(ctx, &trd)
 				if err != nil {
 					unblock_limit_ctrs(&trd)
 					<-trdCh
 				}
-			}
 
-			// If order can't be sold retry 3 times. If sold continue to log and end trd or drop trd and free chan.
-			err = conv_order(ctx, &trd)
-			if err != nil {
-				err := retry_order(ctx, 3, CONV, &trd)
+				//TODO check the loop again. This way it will free the chan on the first itiration
+				// If order can't be sold retry 3 times. If sold continue to conv_order or drop trd and free chan.
+				err = sell_order(ctx, &trd)
 				if err != nil {
-					//TODO log err
-					<-trdCh
+					err := retry_order(ctx, 3, SELL, &trd)
+					if err != nil {
+						unblock_limit_ctrs(&trd)
+						<-trdCh
+					}
 				}
-			}
 
-			<-trdCh
-			break
-		case <-ctx.Done():
-			//If ctx is cancelled exit func
-			return
-		default:
-			//If trdCh is full drop chan
-			break
+				// If order can't be sold retry 3 times. If sold continue to log and end trd or drop trd and free chan.
+				err = conv_order(ctx, &trd)
+				if err != nil {
+					err := retry_order(ctx, 3, CONV, &trd)
+					if err != nil {
+						//TODO log err
+						<-trdCh
+					}
+				}
+
+				<-trdCh
+				break
+			case <-ctx.Done():
+				//If ctx is cancelled exit func
+				return
+			default:
+				//If trdCh is full drop chan
+				break
+			}
 		}
 	}
 }

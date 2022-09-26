@@ -68,6 +68,7 @@ func connect_ws() *websocket.Conn {
 }
 
 func get_ws_config() WsConfig {
+	//TODO will throw error because no root directory. Check if log is written and change to root.
 	file, err := os.Open("config/ws.conf")
 	if err != nil {
 		log.Sys_logger().Fatalf("WARNING: Could not load WS config file. %s", err)
@@ -448,14 +449,19 @@ func subscribeStream(wsConn *websocket.Conn, markets ...string) {
 }
 
 // Get order book and cache result. Then listen to the WS for new orders and send result to the reps handler.
-func listen_ws(wsConn *websocket.Conn) {
-	var wsResp WsStream
+func listen_ws(ctx context.Context, wsConn *websocket.Conn) {
+	var wsResp *WsStream
 	for {
-		err := websocket.JSON.Receive(wsConn, &wsResp)
-		if err != nil {
-			log.Sys_logger().Fatalf("WARNING: Execution stopped because WS response was faulty. %s", err)
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			err := websocket.JSON.Receive(wsConn, wsResp)
+			if err != nil {
+				log.Sys_logger().Fatalf("WARNING: Execution stopped because WS response was faulty. %s", err)
+			}
+			resp_hander(wsResp)
 		}
-		resp_hander(&wsResp)
 	}
 }
 
@@ -500,8 +506,6 @@ func Exec_strat() {
 	set_api_config()
 	//Set Trd Strat
 	set_trd_strat()
-	//Get WS Connection
-	wsConn := connect_ws()
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, ctxKey("reqWeight"), true)
 	//Set ExInfos
@@ -524,8 +528,6 @@ func Exec_strat() {
 	go init_markets_price(ctx, trdStrategy.SellMarket, &wg)
 	go init_markets_price(ctx, trdStrategy.ConvMarket, &wg)
 	wg.Wait()
-	//Subscribe to WS book stream
-	subscribeStream(wsConn, trdStrategy.BuyMarket, trdStrategy.SellMarket, trdStrategy.ConvMarket)
 	//Start service handler
-	service_handler(ctx, wsConn)
+	service_handler(ctx)
 }
