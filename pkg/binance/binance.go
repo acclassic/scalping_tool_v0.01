@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"swap-trader/pkg/log"
 	"sync"
@@ -20,7 +21,7 @@ const (
 	CONV trdMarket = "CONV"
 )
 
-var api *ApiConfig
+var api ApiConfig
 var trdFunds accFunds
 var exLimitsCtrs limitsCtrs
 var symbolsFilters = make(map[string]map[string]ExFilters)
@@ -52,6 +53,14 @@ func (f *accFunds) update_funds(origin trdMarket, amount float64) {
 	f.mu.Unlock()
 }
 
+func get_config_path(file string) string {
+	wDir, _ := os.Getwd()
+	//Insert main folder here
+	basePath := strings.SplitAfter(wDir, "scalping_tool_v0.01")
+	filePath := filepath.Join(basePath[0], "config", file)
+	return filePath
+}
+
 type WsConfig struct {
 	WsOrigin  string
 	WsAddress string
@@ -70,6 +79,8 @@ func connect_ws() *websocket.Conn {
 func get_ws_config() WsConfig {
 	//TODO will throw error because no root directory. Check if log is written and change to root.
 	file, err := os.Open("config/ws.conf")
+	//fPath := get_config_path("ws.conf")
+	//file, err := os.Open(fPath)
 	if err != nil {
 		log.Sys_logger().Fatalf("WARNING: Could not load WS config file. %s", err)
 	}
@@ -88,13 +99,14 @@ type ApiConfig struct {
 }
 
 func set_api_config() {
-	file, err := os.Open("config/api.conf")
+	fPath := get_config_path("api.conf")
+	file, err := os.Open(fPath)
 	if err != nil {
-		fmt.Println(err)
 		log.Sys_logger().Fatalf("WARNING: Could not load API config file. %s", err)
 	}
-	err = json.NewDecoder(file).Decode(api)
+	err = json.NewDecoder(file).Decode(&api)
 	if err != nil {
+		fmt.Println(err)
 		log.Sys_logger().Fatalf("WARNING: Could not decode API config file. %s", err)
 	}
 }
@@ -490,13 +502,14 @@ type TrdStratConfig struct {
 }
 
 func set_trd_strat() {
-	file, err := os.Open("config/strat.conf")
+	fPath := get_config_path("strat.conf")
+	file, err := os.Open(fPath)
 	if err != nil {
-		log.Sys_logger().Fatalf("WARNING: Could not load API config file. %s", err)
+		log.Sys_logger().Fatalf("WARNING: Could not load Stategy config file. %s", err)
 	}
 	err = json.NewDecoder(file).Decode(&trdStrategy)
 	if err != nil {
-		log.Sys_logger().Fatalf("WARNING: Could not decode API config file. %s", err)
+		log.Sys_logger().Fatalf("WARNING: Could not decode Strategy config file. %s", err)
 	}
 }
 
