@@ -18,14 +18,14 @@ func service_handler(ctx context.Context) {
 	parentCtx := ctx
 	//Ctx for trd_handler func
 	var ctxTrdCncl context.CancelFunc
-	ctxTrd, ctxTrdCncl = context.WithCancel(parentCtx)
+	ctxTrd, ctxTrdCncl := context.WithCancel(parentCtx)
 	//Ctx for Ws listen func
 	var ctxWsCncl context.CancelFunc
-	ctxWs, ctxWsCncl = context.WithCancel(parentCtx)
+	ctxWs, ctxWsCncl := context.WithCancel(parentCtx)
 
 	//Start services
 	go rLimits_handler(exLimitsCtrs)
-	go listen_ws(ws)
+	go listen_ws(ctxWs, wsConn)
 	go trd_handler(ctxTrd)
 
 	restartCh := make(chan bool)
@@ -36,17 +36,18 @@ func service_handler(ctx context.Context) {
 			go timeout_reqs(restartCh, d)
 			break
 		case <-restartCh:
-			ctx, ctxTrdCncl = context.WithCancel(parentCtx)
-			go trd_handler(ctx)
+			ctxTrd, ctxTrdCncl = context.WithCancel(parentCtx)
+			go trd_handler(ctxTrd)
 			break
 		case <-wsTicker:
 			//First cancel the ctx and then close connection to prevent from reading old data.
 			ctxWsCncl()
 			wsConn.Close()
+			ctxWs, ctxWsCncl = context.WithCancel(parentCtx)
 			//Reconnect to the ws and resubscribe to the data stream. Then restart the listen service.
 			wsConn = connect_ws()
 			subscribeStream(wsConn, trdStrategy.BuyMarket, trdStrategy.SellMarket, trdStrategy.ConvMarket)
-			go listen_ws()
+			go listen_ws(ctxWs, wsConn)
 			break
 		}
 	}

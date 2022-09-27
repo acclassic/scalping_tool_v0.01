@@ -161,7 +161,7 @@ func error_handler(ctx context.Context, resp *http.Response) {
 			} else {
 				n, _ := strconv.Atoi(waitTime)
 				d := time.Duration(n) * time.Second
-				cancelCh <- d
+				timeoutCh <- d
 			}
 		}
 	}

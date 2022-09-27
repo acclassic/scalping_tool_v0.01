@@ -4,26 +4,38 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 )
 
+func get_path(path string) string {
+	wDir, _ := os.Getwd()
+	basePaht := strings.TrimSuffix(wDir, "/pkg/log")
+	filePath := filepath.Join(basePaht, path)
+	return filePath
+}
+
+//TODO change file name format and prefix format then save and git commit
 func Sys_logger() *log.Logger {
-	os.Mkdir("logs", 0750)
+	path := get_path("/logs")
+	os.Mkdir(path, 0750)
 	logDate := time.Now().Format("2006-01-02")
-	logPaht := fmt.Sprintf("logs/%s.log", logDate)
-	logFile, _ := os.OpenFile(logPaht, os.O_APPEND|os.O_CREATE, 0644)
-	logPrefix := time.Now().Format("2006-01-02 15:04:05 CEST")
+	logPaht := fmt.Sprintf("%s/%s.log", path, logDate)
+	logFile, _ := os.OpenFile(logPaht, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0664)
+	logPrefix := time.Now().Format("[02-01-2006 15:04:05 CEST] ")
 	logger := log.New(logFile, logPrefix, log.Lshortfile)
 
 	return logger
 }
 
 func Strat_logger() *log.Logger {
-	os.Mkdir("analytics", 0750)
+	path := get_path("/logs/analytics")
+	os.Mkdir(path, 0750)
 	logDate := time.Now().Format("2006-01-02")
-	logPaht := fmt.Sprintf("logs/analytics/%s.log", logDate)
-	logFile, _ := os.OpenFile(logPaht, os.O_APPEND|os.O_CREATE, 0644)
-	logPrefix := time.Now().Format("2006-01-02 15:04:05 CEST")
+	logPaht := fmt.Sprintf("%s/%s.log", path, logDate)
+	logFile, _ := os.OpenFile(logPaht, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0664)
+	logPrefix := time.Now().Format("[02-01-2006 15:04:05 CEST] ")
 	logger := log.New(logFile, logPrefix, log.Lshortfile)
 
 	return logger

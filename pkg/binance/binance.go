@@ -90,6 +90,7 @@ type ApiConfig struct {
 func set_api_config() {
 	file, err := os.Open("config/api.conf")
 	if err != nil {
+		fmt.Println(err)
 		log.Sys_logger().Fatalf("WARNING: Could not load API config file. %s", err)
 	}
 	err = json.NewDecoder(file).Decode(api)
