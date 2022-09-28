@@ -263,7 +263,10 @@ func get_ex_info(ctx context.Context, buyMarket, sellMarket, convMarket string) 
 	}
 	defer resp.Body.Close()
 	var exInfo *ExInfo
-	json.NewDecoder(resp.Body).Decode(exInfo)
+	err = json.NewDecoder(resp.Body).Decode(exInfo)
+	if err != nil {
+		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to decode JSON from http resp. %s", err)
+	}
 	return exInfo, nil
 }
 
@@ -310,7 +313,10 @@ func get_order_book(ctx context.Context, symbol string) (*BookDepth, error) {
 	defer resp.Body.Close()
 	var orderBook *BookDepth
 	//TODO maybe change json decoder to one liner
-	json.NewDecoder(resp.Body).Decode(orderBook)
+	err = json.NewDecoder(resp.Body).Decode(orderBook)
+	if err != nil {
+		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to decode JSON from http resp. %s", err)
+	}
 	return orderBook, nil
 }
 
@@ -335,7 +341,10 @@ func get_acc_funds(ctx context.Context, asset string) (float64, error) {
 	}
 	defer resp.Body.Close()
 	var funds Funds
-	json.NewDecoder(resp.Body).Decode(&funds)
+	err = json.NewDecoder(resp.Body).Decode(&funds)
+	if err != nil {
+		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to decode JSON from http resp. %s", err)
+	}
 	for _, v := range funds.Balances {
 		if v.Asset == asset {
 			return v.Amount, nil
@@ -357,7 +366,10 @@ func get_avg_price(ctx context.Context, symbol string) (float64, error) {
 	}
 	defer req.body.Close()
 	var avgPrice map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&avgPrice)
+	err = json.NewDecoder(resp.Body).Decode(&avgPrice)
+	if err != nil {
+		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to decode JSON from http resp. %s", err)
+	}
 	price := avgPrice["price"].(float64)
 	return price, nil
 }
@@ -395,7 +407,10 @@ func market_order(ctx context.Context, symbol string, side trdMarket, qty float6
 		return nil, err
 	}
 	var order *OrderResp
-	json.NewDecoder(resp.Body).Decode(order)
+	err = json.NewDecoder(resp.Body).Decode(order)
+	if err != nil {
+		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to decode JSON from http resp. %s", err)
+	}
 	//Write result to analytics file. No need to wait before return
 	go log.Add_analytics(order.StratID, order.Symbol, order.Price, order.Qty)
 	return order, nil
@@ -422,7 +437,10 @@ func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty 
 		return nil, err
 	}
 	var order *OrderResp
-	json.NewDecoder(resp.Body).Decode(order)
+	err = json.NewDecoder(resp.Body).Decode(order)
+	if err != nil {
+		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to decode JSON from http resp. %s", err)
+	}
 	//Write result to analytics file. No need to wait before return
 	go log.Add_analytics(order.StratID, order.Symbol, order.Price, order.Qty)
 	return order, nil
