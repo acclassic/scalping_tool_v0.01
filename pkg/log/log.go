@@ -1,13 +1,17 @@
 package log
 
 import (
+	"encoding/csv"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
+
+var muAnlytFile sync.Mutex
 
 func get_path(path string) string {
 	wDir, _ := os.Getwd()
@@ -16,13 +20,20 @@ func get_path(path string) string {
 	return filePath
 }
 
+func Init_folder_struct() {
+	//Create log folder
+	os.Mkdir(get_path("logs"), 0750)
+	//Create analytics folder
+	os.Mkdir(get_path("analytics"), 0750)
+}
+
 //TODO change file name format and prefix format then save and git commit
 func Sys_logger() *log.Logger {
 	path := get_path("/logs")
-	os.Mkdir(path, 0750)
 	logDate := time.Now().Format("2006-01-02")
 	logPaht := fmt.Sprintf("%s/%s.log", path, logDate)
 	logFile, _ := os.OpenFile(logPaht, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0664)
+	defer logFile.Close()
 	logPrefix := time.Now().Format("[02-01-2006 15:04:05 CEST] ")
 	logger := log.New(logFile, logPrefix, log.Lshortfile)
 
@@ -31,12 +42,25 @@ func Sys_logger() *log.Logger {
 
 func Strat_logger() *log.Logger {
 	path := get_path("/logs/analytics")
-	os.Mkdir(path, 0750)
 	logDate := time.Now().Format("2006-01-02")
 	logPaht := fmt.Sprintf("%s/%s.log", path, logDate)
 	logFile, _ := os.OpenFile(logPaht, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0664)
+	defer logFile.Close()
 	logPrefix := time.Now().Format("[02-01-2006 15:04:05 CEST] ")
 	logger := log.New(logFile, logPrefix, log.Lshortfile)
 
 	return logger
+}
+
+func Add_analytics(id int, market string, price, qty float64) {
+	muAnlytFile.Lock()
+	path := get_path("/analytics")
+	date := time.Now().Format("2006-01-02")
+	filePath := fmt.Sprintf("%s/analytics_%s.csv", path, date)
+	file, _ := os.OpenFile(filePath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0664)
+	defer file.Close()
+	csvWriter := csv.NewWriter(file)
+	csvWriter.Write([]string{id, market, price, qty})
+	csvWriter.Flush()
+	muAnlytFile.Unlock()
 }

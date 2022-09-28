@@ -394,19 +394,17 @@ func market_order(ctx context.Context, symbol string, side trdMarket, qty float6
 	if err != nil {
 		return nil, err
 	}
-	//TODO check whick struct to implement and what resp needed
 	var order *OrderResp
 	json.NewDecoder(resp.Body).Decode(order)
+	//Write result to analytics file. No need to wait before return
+	go log.Add_analytics(order.StratID, order.Symbol, order.Price, order.Qty)
 	return order, nil
 }
 
-//TODO change side from string to trdMarket. Probably need to implement type
-//TODO implement strategyId for analytics. Pass form trd_handler()
 func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty float64, stratId int) (*OrderResp, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	//TODO check if time in force needs to be var
 	qParams := queryParams{
 		"symbol":           symbol,
 		"side":             string(side),
@@ -423,9 +421,10 @@ func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty 
 	if err != nil {
 		return nil, err
 	}
-	//TODO check whick struct to implement and what resp needed
 	var order *OrderResp
 	json.NewDecoder(resp.Body).Decode(order)
+	//Write result to analytics file. No need to wait before return
+	go log.Add_analytics(order.StratID, order.Symbol, order.Price, order.Qty)
 	return order, nil
 }
 
@@ -517,6 +516,8 @@ func set_trd_strat() {
 //TODO overthink if ctx value is needed
 //TODO implement reconect after 24h to websocket.
 func Exec_strat() {
+	//Create app folders
+	log.Init_folder_struct()
 	//Set Api Config
 	set_api_config()
 	//Set Trd Strat
