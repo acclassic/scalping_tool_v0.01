@@ -27,7 +27,6 @@ func Init_folder_struct() {
 	os.Mkdir(get_path("analytics"), 0750)
 }
 
-//TODO change file name format and prefix format then save and git commit
 func Sys_logger() *log.Logger {
 	path := get_path("/logs")
 	logDate := time.Now().Format("2006-01-02")

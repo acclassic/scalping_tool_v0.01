@@ -247,7 +247,6 @@ type ExFilters struct {
 	lotPrc        int
 }
 
-//TODO change return to pointer
 func get_ex_info(ctx context.Context, buyMarket, sellMarket, convMarket string) (*ExInfo, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -312,7 +311,6 @@ func get_order_book(ctx context.Context, symbol string) (*BookDepth, error) {
 	}
 	defer resp.Body.Close()
 	var orderBook *BookDepth
-	//TODO maybe change json decoder to one liner
 	err = json.NewDecoder(resp.Body).Decode(orderBook)
 	if err != nil {
 		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to decode JSON from http resp. %s", err)
@@ -531,8 +529,6 @@ func set_trd_strat() {
 	}
 }
 
-//TODO overthink if ctx value is needed
-//TODO implement reconect after 24h to websocket.
 func Exec_strat() {
 	//Create app folders
 	log.Init_folder_struct()

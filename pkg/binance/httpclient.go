@@ -21,8 +21,6 @@ var client = http.Client{
 	Timeout: time.Second * 30,
 }
 
-//TODO add recvWindow param for safty. See https://binance-docs.github.io/apidocs/spot/en/#signed-trade-user_data-and-margin-endpoint-security
-
 type httpReq struct {
 	method  string
 	url     string
@@ -57,8 +55,8 @@ func http_req_handler(ctx context.Context, reqParams httpReq) (*http.Response, e
 			exLimitsCtrs.reqWeight.decrease_counter(reqParams.weight)
 			exLimitsCtrs.rawReq.decrease_counter(1)
 		} else {
-			//TODO see if needs to be logged
 			err := errors.New("Counters low. API request could not be executed.")
+			log.Strat_logger().Print(err)
 			return nil, err
 		}
 	}
@@ -67,6 +65,7 @@ func http_req_handler(ctx context.Context, reqParams httpReq) (*http.Response, e
 	if err != nil {
 		//TODO see if only log or panic necessary
 		log.Sys_logger().Printf("ERROR: Request '%s' could not be created. %s\n", url, err)
+		return nil, err
 	}
 	//Add header for secure connection and content-type for post req
 	if reqParams.secure == true {

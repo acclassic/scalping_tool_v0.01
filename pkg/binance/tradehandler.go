@@ -69,7 +69,6 @@ func trd_handler(ctx context.Context) {
 					<-trdCh
 				}
 
-				//TODO check the loop again. This way it will free the chan on the first itiration
 				// If order can't be sold retry 3 times. If sold continue to conv_order or drop trd and free chan.
 				err = sell_order(ctx, &trd)
 				if err != nil {
@@ -216,7 +215,6 @@ func conv_order(ctx context.Context, trd *trdInfo) error {
 	return nil
 }
 
-//TODO implement ctx. Cancel ctx on err
 func parse_price(ctx context.Context, errCh chan error, resultCh chan float64, price float64, market string) error {
 	doneCh := make(chan bool)
 	go func() {

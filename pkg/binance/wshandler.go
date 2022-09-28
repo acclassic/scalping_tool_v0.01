@@ -29,7 +29,6 @@ func (mp *marketPrice) get_price() float64 {
 }
 
 func resp_hander(resp *WsStream) {
-	//TODO check of errors are handled and how a disconect is handled.
 	//If resp empty ignore, means sendet req was sucessfull
 	if len(resp.Data.Asks) <= 0 && len(resp.Data.Bids) <= 0 {
 		return
