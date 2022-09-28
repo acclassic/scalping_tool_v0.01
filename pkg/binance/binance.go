@@ -77,10 +77,8 @@ func connect_ws() *websocket.Conn {
 }
 
 func get_ws_config() WsConfig {
-	//TODO will throw error because no root directory. Check if log is written and change to root.
-	file, err := os.Open("config/ws.conf")
-	//fPath := get_config_path("ws.conf")
-	//file, err := os.Open(fPath)
+	fPath := get_config_path("ws.conf")
+	file, err := os.Open(fPath)
 	if err != nil {
 		log.Sys_logger().Fatalf("WARNING: Could not load WS config file. %s", err)
 	}
@@ -106,7 +104,6 @@ func set_api_config() {
 	}
 	err = json.NewDecoder(file).Decode(&api)
 	if err != nil {
-		fmt.Println(err)
 		log.Sys_logger().Fatalf("WARNING: Could not decode API config file. %s", err)
 	}
 }
@@ -370,10 +367,10 @@ type OrderResp struct {
 	Price   float64 `json:"price,string"`
 	Qty     float64 `json:"executedQty,string"`
 	Status  string  `json:"status"`
-	stratID int     `json:"strategyId"`
+	StratID int     `json:"strategyId"`
 }
 
-func market_order(ctx context.Context, symbol string, side trdMarket, qty float64) (*OrderResp, error) {
+func market_order(ctx context.Context, symbol string, side trdMarket, qty float64, stratId int) (*OrderResp, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -383,6 +380,7 @@ func market_order(ctx context.Context, symbol string, side trdMarket, qty float6
 		"side":             string(side),
 		"type":             "MARKET",
 		"newOrderRespType": "RESULT",
+		"strategyId":       stratId,
 	}
 	switch side {
 	case BUY:
@@ -403,7 +401,7 @@ func market_order(ctx context.Context, symbol string, side trdMarket, qty float6
 
 //TODO change side from string to trdMarket. Probably need to implement type
 //TODO implement strategyId for analytics. Pass form trd_handler()
-func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty float64) (*OrderResp, error) {
+func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty float64, stratId int) (*OrderResp, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -416,6 +414,7 @@ func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty 
 		"price":            fmt.Sprint(price),
 		"quantity":         fmt.Sprint(qty),
 		"newOrderRespType": "RESULT",
+		"strategyId":       stratId,
 	}
 	req := create_httpReq(http.MethodPost, "/api/v3/order/test", qParams, true, weightOrder)
 	resp, err := http_req_handler(ctx, req)

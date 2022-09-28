@@ -14,6 +14,8 @@ func service_handler(ctx context.Context) {
 	//Create a ticker to disconnect and the reconnect the WS after 24h. Becasue Binance will drop the connection after 24h we will prevent this from causing an unexpected error by doing it manually.
 	d, _ := time.ParseDuration("23h55m")
 	wsTicker := time.Tick(d)
+	//Init stratId counter
+	stratId.init_stratId()
 	//Create a copy of the parent ctx to create new child ctx when needed
 	parentCtx := ctx
 	//Ctx for trd_handler func

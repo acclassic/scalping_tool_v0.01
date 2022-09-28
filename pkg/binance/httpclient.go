@@ -106,6 +106,7 @@ func create_req_params(req httpReq) (string, io.Reader) {
 	switch req.method {
 	case "GET":
 		rUrl.RawQuery = qParams.Encode()
+		fmt.Println(rUrl.String())
 		return rUrl.String(), nil
 	case "POST":
 		body := strings.NewReader(qParams.Encode())

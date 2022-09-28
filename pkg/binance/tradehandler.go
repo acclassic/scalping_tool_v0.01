@@ -5,12 +5,28 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 )
 
-//TODO check if possible to only get avgPrice once and pass to other funcs.
-//TODO check if chan needs init func for variable buffer size
-//TODO check if chan needs to be a local var for trd_handler
-var trdCh = make(chan bool, 3)
+var stratId idCtr
+
+type idCtr struct {
+	id int
+	mu sync.Mutex
+}
+
+func (id *idCtr) init_stratId() {
+	id.mu.Lock()
+	id.id = 0
+	id.mu.Unlock()
+}
+
+func (id *idCtr) get_stratId() int {
+	id.mu.Lock()
+	defer id.mu.Unlock()
+	id = id + 1
+	return id
+}
 
 type trdInfo struct {
 	buyPrice  float64
@@ -22,6 +38,9 @@ type trdInfo struct {
 }
 
 func trd_handler(ctx context.Context) {
+	//TODO check if possible to only get avgPrice once and pass to other funcs.
+	//TODO check if chan needs init func for variable buffer size
+	trdCh := make(chan bool, 3)
 	for {
 		trdSignal, buyPrice := trd_signal()
 		if trdSignal == true {
@@ -108,7 +127,7 @@ func buy_order(ctx context.Context, trd *trdInfo) error {
 			if err != nil {
 				return err
 			}
-			order, err := limit_order(ctx, trdStrategy.BuyMarket, BUY, price, qty)
+			order, err := limit_order(ctx, trdStrategy.BuyMarket, BUY, price, qty, stratId.get_stratId())
 			update_trd_order(weightOrder, trd)
 			if err != nil {
 				return err
@@ -152,7 +171,7 @@ func sell_order(ctx context.Context, trd *trdInfo) error {
 		if err != nil {
 			return err
 		}
-		order, err := market_order(ctx, trdStrategy.SellMarket, SELL, qty)
+		order, err := market_order(ctx, trdStrategy.SellMarket, SELL, qty, stratId.get_stratId())
 		update_trd_order(weightOrder, trd)
 		if err != nil {
 			return err
@@ -185,7 +204,7 @@ func conv_order(ctx context.Context, trd *trdInfo) error {
 	if err != nil {
 		return err
 	}
-	order, err := market_order(ctx, trdStrategy.ConvMarket, BUY, qty)
+	order, err := market_order(ctx, trdStrategy.ConvMarket, BUY, qty, stratId.get_stratId())
 	update_trd_order(weightOrder, trd)
 	if err != nil {
 		return err

@@ -11,8 +11,8 @@ import (
 
 func get_path(path string) string {
 	wDir, _ := os.Getwd()
-	basePaht := strings.TrimSuffix(wDir, "/pkg/log")
-	filePath := filepath.Join(basePaht, path)
+	basePath := strings.SplitAfter(wDir, "scalping_tool_v0.01")
+	filePath := filepath.Join(basePath[0], path)
 	return filePath
 }
 
