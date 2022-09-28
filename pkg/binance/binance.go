@@ -381,6 +381,7 @@ func market_order(ctx context.Context, symbol string, side trdMarket, qty float6
 		"type":             "MARKET",
 		"newOrderRespType": "RESULT",
 		"strategyId":       stratId,
+		"recvWindow":       2000,
 	}
 	switch side {
 	case BUY:
@@ -415,6 +416,7 @@ func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty 
 		"quantity":         fmt.Sprint(qty),
 		"newOrderRespType": "RESULT",
 		"strategyId":       stratId,
+		"recvWindow":       2000,
 	}
 	req := create_httpReq(http.MethodPost, "/api/v3/order/test", qParams, true, weightOrder)
 	resp, err := http_req_handler(ctx, req)
