@@ -25,8 +25,8 @@ func (id *idCtr) init_stratId() {
 func (id *idCtr) get_stratId() int {
 	id.mu.Lock()
 	defer id.mu.Unlock()
-	id = id + 1
-	return id
+	id.id = id.id + 1
+	return id.id
 }
 
 type trdInfo struct {

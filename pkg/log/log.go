@@ -59,7 +59,7 @@ func Add_analytics(id int, market string, price, qty float64) {
 	file, _ := os.OpenFile(filePath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0664)
 	defer file.Close()
 	csvWriter := csv.NewWriter(file)
-	csvWriter.Write([]string{id, market, price, qty})
+	csvWriter.Write([]string{fmt.Sprint(id), market, fmt.Sprint(price), fmt.Sprint(qty)})
 	csvWriter.Flush()
 	muAnlytFile.Unlock()
 }
