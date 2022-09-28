@@ -225,7 +225,6 @@ type MarketEx struct {
 }
 
 //TODO test if TickSize is populated
-//TODO implement applyMinToMarket and applyMaxToMarket?
 type ExFilters struct {
 	FType         string  `json:"filterType"`
 	MinPrice      float64 `json:"minPrice,string"`
