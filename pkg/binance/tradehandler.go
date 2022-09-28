@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"swap-trader/pkg/log"
 	"sync"
 )
 
@@ -66,6 +67,7 @@ func trd_handler(ctx context.Context) {
 				err := buy_order(ctx, &trd)
 				if err != nil {
 					unblock_limit_ctrs(&trd)
+					log.Strat_logger().Println(err)
 					<-trdCh
 				}
 
@@ -75,6 +77,7 @@ func trd_handler(ctx context.Context) {
 					err := retry_order(ctx, 3, SELL, &trd)
 					if err != nil {
 						unblock_limit_ctrs(&trd)
+						log.Strat_logger().Println(err)
 						<-trdCh
 					}
 				}
@@ -84,7 +87,7 @@ func trd_handler(ctx context.Context) {
 				if err != nil {
 					err := retry_order(ctx, 3, CONV, &trd)
 					if err != nil {
-						//TODO log err
+						log.Strat_logger().Println(err)
 						<-trdCh
 					}
 				}

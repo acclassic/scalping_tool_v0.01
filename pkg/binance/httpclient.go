@@ -63,7 +63,6 @@ func http_req_handler(ctx context.Context, reqParams httpReq) (*http.Response, e
 	url, body := create_req_params(reqParams)
 	req, err := http.NewRequestWithContext(ctx, reqParams.method, url, body)
 	if err != nil {
-		//TODO see if only log or panic necessary
 		log.Sys_logger().Printf("ERROR: Request '%s' could not be created. %s\n", url, err)
 		return nil, err
 	}
