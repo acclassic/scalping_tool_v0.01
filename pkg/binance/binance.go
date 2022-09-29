@@ -260,12 +260,12 @@ func get_ex_info(ctx context.Context, buyMarket, sellMarket, convMarket string) 
 		return nil, err
 	}
 	defer resp.Body.Close()
-	var exInfo *ExInfo
+	var exInfo ExInfo
 	err = json.NewDecoder(resp.Body).Decode(exInfo)
 	if err != nil {
 		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to decode JSON from http resp. %s", err)
 	}
-	return exInfo, nil
+	return &exInfo, nil
 }
 
 func set_symbols_filters(marketsFilter []MarketEx) {
@@ -309,12 +309,12 @@ func get_order_book(ctx context.Context, symbol string) (*BookDepth, error) {
 		return nil, nil
 	}
 	defer resp.Body.Close()
-	var orderBook *BookDepth
-	err = json.NewDecoder(resp.Body).Decode(orderBook)
+	var orderBook BookDepth
+	err = json.NewDecoder(resp.Body).Decode(&orderBook)
 	if err != nil {
 		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to decode JSON from http resp. %s", err)
 	}
-	return orderBook, nil
+	return &orderBook, nil
 }
 
 type Funds struct {
@@ -403,14 +403,14 @@ func market_order(ctx context.Context, symbol string, side trdMarket, qty float6
 	if err != nil {
 		return nil, err
 	}
-	var order *OrderResp
-	err = json.NewDecoder(resp.Body).Decode(order)
+	var order OrderResp
+	err = json.NewDecoder(resp.Body).Decode(&order)
 	if err != nil {
 		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to decode JSON from http resp. %s", err)
 	}
 	//Write result to analytics file. No need to wait before return
 	go log.Add_analytics(order.StratID, order.Symbol, order.Price, order.Qty)
-	return order, nil
+	return &order, nil
 }
 
 func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty float64, stratId int) (*OrderResp, error) {
@@ -433,14 +433,14 @@ func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty 
 	if err != nil {
 		return nil, err
 	}
-	var order *OrderResp
-	err = json.NewDecoder(resp.Body).Decode(order)
+	var order OrderResp
+	err = json.NewDecoder(resp.Body).Decode(&order)
 	if err != nil {
 		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to decode JSON from http resp. %s", err)
 	}
 	//Write result to analytics file. No need to wait before return
 	go log.Add_analytics(order.StratID, order.Symbol, order.Price, order.Qty)
-	return order, nil
+	return &order, nil
 }
 
 type WsRequest struct {
