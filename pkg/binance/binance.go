@@ -237,7 +237,7 @@ type ExFilters struct {
 	MaxQty        float64 `json:"maxQty,string"`
 	StepSize      string  `json:"stepSize"`
 	MaxNotional   float64 `json:"maxNotional,string"`
-	MinNotional   float64 `json:"minNotional,sting"`
+	MinNotional   float64 `json:"minNotional,string"`
 	ApplyToMarket bool    `json:"applyToMarket"`
 	ApplyMinToM   bool    `json:"applyMinToMarket"`
 	ApplyMaxToM   bool    `json:"applyMaxToMarket"`
