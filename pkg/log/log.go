@@ -32,7 +32,6 @@ func Sys_logger() *log.Logger {
 	logDate := time.Now().Format("2006-01-02")
 	logPaht := fmt.Sprintf("%s/%s.log", path, logDate)
 	logFile, _ := os.OpenFile(logPaht, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0664)
-	defer logFile.Close()
 	logPrefix := time.Now().Format("[02-01-2006 15:04:05 CEST] ")
 	logger := log.New(logFile, logPrefix, log.Lshortfile)
 
@@ -44,7 +43,6 @@ func Strat_logger() *log.Logger {
 	logDate := time.Now().Format("2006-01-02")
 	logPaht := fmt.Sprintf("%s/%s.log", path, logDate)
 	logFile, _ := os.OpenFile(logPaht, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0664)
-	defer logFile.Close()
 	logPrefix := time.Now().Format("[02-01-2006 15:04:05 CEST] ")
 	logger := log.New(logFile, logPrefix, log.Lshortfile)
 
