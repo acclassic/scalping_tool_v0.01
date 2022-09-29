@@ -261,7 +261,7 @@ func get_ex_info(ctx context.Context, buyMarket, sellMarket, convMarket string) 
 	}
 	defer resp.Body.Close()
 	var exInfo ExInfo
-	err = json.NewDecoder(resp.Body).Decode(exInfo)
+	err = json.NewDecoder(resp.Body).Decode(&exInfo)
 	if err != nil {
 		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to decode JSON from http resp. %s", err)
 	}
