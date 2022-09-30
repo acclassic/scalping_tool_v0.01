@@ -276,7 +276,8 @@ func set_symbols_filters(marketsFilter []MarketEx) {
 			lotPrc := calc_precision(f.StepSize)
 			f.pricePrc = pricePrc
 			f.lotPrc = lotPrc
-			symbolsFilters[v.Symbol][f.FType] = f
+			//symbolsFilters[v.Symbol][f.FType] = f
+			symbolsFilters[v.Symbol] = map[string]ExFilters{f.FType: f}
 		}
 	}
 }
@@ -284,6 +285,9 @@ func set_symbols_filters(marketsFilter []MarketEx) {
 func calc_precision(tickSize string) int {
 	i := 0
 	s := strings.SplitAfter(tickSize, ".")
+	if len(s) < 2 {
+		return 0
+	}
 	for _, v := range s[1] {
 		i++
 		if v == 1 {
@@ -331,7 +335,7 @@ func get_acc_funds(ctx context.Context, asset string) (float64, error) {
 	if ctx.Err() != nil {
 		return 0, ctx.Err()
 	}
-	req := create_httpReq(http.MethodGet, "/api/v3/account", queryParams{}, false, weightAccInfo)
+	req := create_httpReq(http.MethodGet, "/api/v3/account", queryParams{}, true, weightAccInfo)
 	resp, err := http_req_handler(ctx, req)
 	if err != nil {
 		return 0, err
@@ -478,17 +482,17 @@ func subscribeStream(wsConn *websocket.Conn, markets ...string) {
 
 // Get order book and cache result. Then listen to the WS for new orders and send result to the reps handler.
 func listen_ws(ctx context.Context, wsConn *websocket.Conn) {
-	var wsResp *WsStream
+	var wsResp WsStream
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			err := websocket.JSON.Receive(wsConn, wsResp)
+			err := websocket.JSON.Receive(wsConn, &wsResp)
 			if err != nil {
 				log.Sys_logger().Fatalf("WARNING: Execution stopped because WS response was faulty. %s", err)
 			}
-			resp_hander(wsResp)
+			resp_hander(&wsResp)
 		}
 	}
 }
@@ -545,7 +549,7 @@ func Exec_strat() {
 	set_symbols_filters(exInfos.Symbols)
 	set_rLimits(exInfos.RateLimits)
 	//Set accFunds. No need to go over sync method because the value is initiated and not accessed concurrent.
-	funds, err := get_acc_funds(ctx, "EUR")
+	funds, err := get_acc_funds(ctx, "USDT")
 	if err != nil {
 		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to get funds. %s", err)
 	}
