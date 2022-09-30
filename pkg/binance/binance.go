@@ -561,6 +561,8 @@ func Exec_strat() {
 	go init_markets_price(ctx, trdStrategy.SellMarket, &wg)
 	go init_markets_price(ctx, trdStrategy.ConvMarket, &wg)
 	wg.Wait()
+	//fmt.Println(exInfos)
+	//fmt.Println(buyMarketP)
 	//Start service handler
 	service_handler(ctx)
 }

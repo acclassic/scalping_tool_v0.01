@@ -5,6 +5,8 @@ import (
 	"sync"
 )
 
+//TODO inclose in var
+
 var buyMarketP marketPrice
 var sellMarketP marketPrice
 var convMarketP marketPrice
