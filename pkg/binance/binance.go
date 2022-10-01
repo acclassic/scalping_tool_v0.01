@@ -230,8 +230,8 @@ type ExFilters struct {
 	MinPrice      float64 `json:"minPrice,string"`
 	MaxPrice      float64 `json:"maxPrice,string"`
 	TickSize      string  `json:"tickSize"`
-	MultipUp      float64 `json:"multipliererUp,string"`
-	MultipDown    float64 `json:"multipliererDown,string"`
+	MultipUp      float64 `json:"multiplierUp,string"`
+	MultipDown    float64 `json:"multiplierDown,string"`
 	AvgPriceMins  int     `json:"avgPriceMins"`
 	MinQty        float64 `json:"minQty,string"`
 	MaxQty        float64 `json:"maxQty,string"`
@@ -561,8 +561,6 @@ func Exec_strat() {
 	go init_markets_price(ctx, trdStrategy.SellMarket, &wg)
 	go init_markets_price(ctx, trdStrategy.ConvMarket, &wg)
 	wg.Wait()
-	//fmt.Println(exInfos)
-	//fmt.Println(buyMarketP)
 	//Start service handler
 	service_handler(ctx)
 }
