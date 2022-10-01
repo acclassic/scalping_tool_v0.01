@@ -79,6 +79,10 @@ func http_req_handler(ctx context.Context, reqParams httpReq) (*http.Response, e
 	if err != nil {
 		log.Sys_logger().Printf("ERROR: Sending request '%s' resulted in an error. %s\n", url, err)
 	}
+	//If ctx was cancelled return. Have to test before accesing resp because if ctx is cancelled func will panic because of nil pointer.
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
 	//Send resp to error_handler if not 200 or return value
 	if resp.StatusCode != 200 {
 		error_handler(ctx, resp)
@@ -154,6 +158,7 @@ func error_handler(ctx context.Context, resp *http.Response) {
 	if resp.StatusCode != 200 {
 		switch resp.StatusCode {
 		case 429:
+			fmt.Println("Error handler")
 			if waitTime := resp.Header.Get("Retry-After"); waitTime != "" {
 				log.Sys_logger().Fatalln("WARNING: App stopped. HTTP Resp returned empty 'Retry-After' Header. Check Binance support.")
 			} else {

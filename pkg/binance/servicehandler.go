@@ -2,6 +2,7 @@ package binance
 
 import (
 	"context"
+	"fmt"
 	"time"
 )
 
@@ -34,10 +35,13 @@ func service_handler(ctx context.Context) {
 	for {
 		select {
 		case d := <-timeoutCh:
+			fmt.Println(d)
 			ctxTrdCncl()
+			fmt.Println("ctxCancelled")
 			go timeout_reqs(restartCh, d)
 			break
 		case <-restartCh:
+			fmt.Println("restartCh")
 			ctxTrd, ctxTrdCncl = context.WithCancel(parentCtx)
 			go trd_handler(ctxTrd)
 			break
@@ -61,6 +65,7 @@ func timeout_reqs(ch chan<- bool, d time.Duration) {
 	for {
 		select {
 		case <-ticker.C:
+			fmt.Println("ticker expired")
 			ch <- true
 			return
 		}
