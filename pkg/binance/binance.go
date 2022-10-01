@@ -490,6 +490,10 @@ func listen_ws(ctx context.Context, wsConn *websocket.Conn) {
 		default:
 			err := websocket.JSON.Receive(wsConn, &wsResp)
 			if err != nil {
+				//If err is because ctx was cancelled return without stopping execution.
+				if ctx.Err != nil {
+					return
+				}
 				log.Sys_logger().Fatalf("WARNING: Execution stopped because WS response was faulty. %s", err)
 			}
 			resp_hander(&wsResp)
