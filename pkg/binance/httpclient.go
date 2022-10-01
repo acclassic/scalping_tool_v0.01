@@ -47,7 +47,7 @@ func http_req_handler(ctx context.Context, reqParams httpReq) (*http.Response, e
 		return nil, ctx.Err()
 	}
 	//Check if reqWeight has to be subtracted or not
-	if ctx.Value(ctxKey("updateCtrs")) == true {
+	if ctx.Value(ctxKey("reqWeight")) == true {
 		weightCtr := exLimitsCtrs.reqWeight.get_counter()
 		reqCtr := exLimitsCtrs.rawReq.get_counter()
 		//Check if ctrs allow req execution. If not don't execute and return error.

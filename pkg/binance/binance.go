@@ -544,7 +544,6 @@ func Exec_strat() {
 	//Set Trd Strat
 	set_trd_strat()
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, ctxKey("reqWeight"), true)
 	//Set ExInfos
 	exInfos, err := get_ex_info(ctx, trdStrategy.BuyMarket, trdStrategy.SellMarket, trdStrategy.ConvMarket)
 	if err != nil {
@@ -552,7 +551,10 @@ func Exec_strat() {
 	}
 	set_symbols_filters(exInfos.Symbols)
 	set_rLimits(exInfos.RateLimits)
-	exLimitsCtrs.orders.count = 20
+	//TODO DEL
+	exLimitsCtrs.rawReq.count = 6100
+	//Add ctx value to update exLimitsCtrs
+	ctx = context.WithValue(ctx, ctxKey("reqWeight"), true)
 	//Set accFunds. No need to go over sync method because the value is initiated and not accessed concurrent.
 	funds, err := get_acc_funds(ctx, "USDT")
 	if err != nil {
