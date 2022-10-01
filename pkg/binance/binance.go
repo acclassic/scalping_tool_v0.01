@@ -109,7 +109,7 @@ func set_api_config() {
 }
 
 //TODO check how this is implemented.
-func rLimits_handler(exLimits limitsCtrs) {
+func rLimits_handler(exLimits *limitsCtrs) {
 	//Reset counters after Tick
 	for {
 		select {
@@ -548,6 +548,7 @@ func Exec_strat() {
 	}
 	set_symbols_filters(exInfos.Symbols)
 	set_rLimits(exInfos.RateLimits)
+	exLimitsCtrs.orders.count = 20
 	//Set accFunds. No need to go over sync method because the value is initiated and not accessed concurrent.
 	funds, err := get_acc_funds(ctx, "USDT")
 	if err != nil {

@@ -12,7 +12,8 @@ func service_handler(ctx context.Context) {
 	wsConn := connect_ws()
 	subscribeStream(wsConn, trdStrategy.BuyMarket, trdStrategy.SellMarket, trdStrategy.ConvMarket)
 	//Create a ticker to disconnect and the reconnect the WS after 24h. Becasue Binance will drop the connection after 24h we will prevent this from causing an unexpected error by doing it manually.
-	d, _ := time.ParseDuration("23h55m")
+	d, _ := time.ParseDuration("10s")
+	//d, _ := time.ParseDuration("23h55m")
 	wsTicker := time.Tick(d)
 	//Init stratId counter
 	stratId.init_stratId()
@@ -26,7 +27,7 @@ func service_handler(ctx context.Context) {
 	ctxWs, ctxWsCncl := context.WithCancel(parentCtx)
 
 	//Start services
-	go rLimits_handler(exLimitsCtrs)
+	go rLimits_handler(&exLimitsCtrs)
 	go listen_ws(ctxWs, wsConn)
 	go trd_handler(ctxTrd)
 
