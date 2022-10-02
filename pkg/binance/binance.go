@@ -366,7 +366,7 @@ func get_avg_price(ctx context.Context, symbol string) (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer resp.body.Close()
+	defer resp.Body.Close()
 	var avgPrice map[string]interface{}
 	err = json.NewDecoder(resp.Body).Decode(&avgPrice)
 	if err != nil {
