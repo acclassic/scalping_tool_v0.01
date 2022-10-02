@@ -48,7 +48,7 @@ func trd_handler(ctx context.Context) {
 			select {
 			case trdCh <- true:
 				//Check if ctx status before starting trd
-				if ctx.Err != nil {
+				if ctx.Err() != nil {
 					return
 				}
 				trd := trdInfo{
@@ -379,13 +379,14 @@ func retry_order(ctx context.Context, n int, market trdMarket, trd *trdInfo) err
 func trd_signal() (bool, float64) {
 	//TODO evtl. include sync.Waitgroup and goroutine
 	buyPrice := buyMarketP.get_price()
-	sellPrice := sellMarketP.get_price()
-	convPrice := convMarketP.get_price()
-	if m := sellPrice/convPrice - buyPrice; m > 0 {
-		return true, buyPrice
-	} else {
-		return false, 0
-	}
+	//sellPrice := sellMarketP.get_price()
+	//convPrice := convMarketP.get_price()
+	return true, buyPrice
+	//if m := sellPrice/convPrice - buyPrice; m > 0 {
+	//	return true, buyPrice
+	//} else {
+	//	return false, 0
+	//}
 }
 
 func update_trd_req(weight int, trd *trdInfo) {

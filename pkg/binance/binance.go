@@ -271,14 +271,15 @@ func get_ex_info(ctx context.Context, buyMarket, sellMarket, convMarket string) 
 func set_symbols_filters(marketsFilter []MarketEx) {
 	//Convert struct to map with struct for direct access to filters
 	for _, v := range marketsFilter {
+		fMap := make(map[string]ExFilters)
 		for _, f := range v.Filters {
 			pricePrc := calc_precision(f.TickSize)
 			lotPrc := calc_precision(f.StepSize)
 			f.pricePrc = pricePrc
 			f.lotPrc = lotPrc
-			//symbolsFilters[v.Symbol][f.FType] = f
-			symbolsFilters[v.Symbol] = map[string]ExFilters{f.FType: f}
+			fMap[f.FType] = f
 		}
+		symbolsFilters[v.Symbol] = fMap
 	}
 }
 
@@ -290,7 +291,7 @@ func calc_precision(tickSize string) int {
 	}
 	for _, v := range s[1] {
 		i++
-		if v == 1 {
+		if v == '1' {
 			return i
 		}
 	}
