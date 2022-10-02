@@ -38,6 +38,11 @@ type trdInfo struct {
 	orders    int
 }
 
+type orderParams struct {
+	price float64
+	qty   float64
+}
+
 func trd_handler(ctx context.Context) {
 	//TODO check if possible to only get avgPrice once and pass to other funcs.
 	//TODO check if chan needs init func for variable buffer size
@@ -112,20 +117,21 @@ func buy_order(ctx context.Context, trd *trdInfo) error {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	mPrice := buyMarketP.get_price()
-	price := trdFunds.get_funds(trdStrategy.TrdRate)
-	qty := price / mPrice
+	var ordParams orderParams
+	ordParams.price = trdFunds.get_funds(trdStrategy.TrdRate)
+	ordParams.qty = ordParams.price / mPrice
 
 	//Pass value and error chan then wait for value return. No need to check qtyCh because both values are needed to continue. If err occurs drop trd and trdCh.
 	priceCh := make(chan float64)
 	qtyCh := make(chan float64)
 	errCh := make(chan error)
-	go parse_price(ctx, errCh, priceCh, price, trdStrategy.BuyMarket)
-	go parse_qty(ctx, errCh, qtyCh, qty, trdStrategy.BuyMarket)
+	go parse_price(ctx, errCh, priceCh, ordParams, trdStrategy.BuyMarket)
+	go parse_qty(ctx, errCh, qtyCh, ordParams, trdStrategy.BuyMarket)
 	select {
 	case price := <-priceCh:
 		select {
 		case qty := <-qtyCh:
-			err := parse_min_notional(ctx, price, qty, trdStrategy.BuyMarket)
+			err := parse_min_notional(ctx, ordParams, trdStrategy.BuyMarket)
 			if err != nil {
 				return err
 			}
@@ -138,7 +144,7 @@ func buy_order(ctx context.Context, trd *trdInfo) error {
 				err := errors.New("Order was rejected.")
 				return err
 			}
-			trd.buyPrice = price
+			trd.buyPrice = ordParams.price
 			trd.sellAmnt = order.Qty
 			return nil
 		case err := <-errCh:
@@ -218,20 +224,20 @@ func conv_order(ctx context.Context, trd *trdInfo) error {
 	return nil
 }
 
-func parse_price(ctx context.Context, errCh chan error, resultCh chan float64, price float64, market string) error {
-	doneCh := make(chan bool)
+func parse_price(ctx context.Context, errCh chan error, resultCh chan float64, ordParams orderParams, market string) error {
+	doneCh := make(chan float64)
 	go func() {
 		//PRICE_FILTER
 		minPrice := symbolsFilters[market]["PRICE_FILTER"].MinPrice
 		maxPrice := symbolsFilters[market]["PRICE_FILTER"].MaxPrice
 		precision := symbolsFilters[market]["PRICE_FILTER"].lotPrc
-		if price < minPrice || price > maxPrice {
+		if ordParams.price < minPrice || ordParams.price > maxPrice {
 			err := errors.New("Price filter not respected.")
 			errCh <- err
 			return
 		}
 		fmtCmd := fmt.Sprint("%.", precision, "f")
-		price, _ := strconv.ParseFloat(fmt.Sprintf(fmtCmd, price), 64)
+		price, _ := strconv.ParseFloat(fmt.Sprintf(fmtCmd, ordParams.price), 64)
 
 		//PERCENT_PRICE
 		avgPrice, err := get_avg_price(ctx, market)
@@ -241,37 +247,38 @@ func parse_price(ctx context.Context, errCh chan error, resultCh chan float64, p
 		}
 		multipDown := symbolsFilters[market]["PERCENT_PRICE"].MultipDown
 		mulipUp := symbolsFilters[market]["PERCENT_PRICE"].MultipUp
-		if price < avgPrice*multipDown || price > avgPrice*mulipUp {
+		pcPrice := ordParams.price / ordParams.qty
+		if pcPrice < avgPrice*multipDown || pcPrice > avgPrice*mulipUp {
 			err := errors.New("AvgPrice filter not respected.")
 			errCh <- err
 			return
 		}
-		doneCh <- true
+		doneCh <- price
 		return
 	}()
 
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-	case <-doneCh:
+	case price := <-doneCh:
 		resultCh <- price
 		return nil
 	}
 }
 
-func parse_qty(ctx context.Context, errCh chan error, resultCh chan float64, qty float64, market string) {
+func parse_qty(ctx context.Context, errCh chan error, resultCh chan float64, ordParams orderParams, market string) {
 	doneCh := make(chan float64)
 	go func() {
 		minQty := symbolsFilters[market]["LOT_SIZE"].MinQty
 		maxQty := symbolsFilters[market]["LOT_SIZE"].MaxQty
 		precision := symbolsFilters[market]["LOT_SIZE"].lotPrc
-		if qty < minQty || qty > maxQty {
+		if ordParams.qty < minQty || ordParams.qty > maxQty {
 			err := errors.New("Lot filter not respected.")
 			errCh <- err
 			return
 		}
 		fmtCmd := fmt.Sprint("%.", precision, "f")
-		qty, _ := strconv.ParseFloat(fmt.Sprintf(fmtCmd, qty), 64)
+		qty, _ := strconv.ParseFloat(fmt.Sprintf(fmtCmd, ordParams.qty), 64)
 		doneCh <- qty
 	}()
 
@@ -309,16 +316,16 @@ func parse_market_qty(ctx context.Context, errCh chan error, resultCh chan float
 	}
 }
 
-func parse_min_notional(ctx context.Context, price, qty float64, market string) error {
+func parse_min_notional(ctx context.Context, ordParams orderParams, market string) error {
 	minNotional := symbolsFilters[market]["MIN_NOTIONAL"].MinNotional
 	maxNotional := symbolsFilters[market]["MIN_NOTIONAL"].MaxNotional
 	if maxNotional != 0 {
-		if price*qty < minNotional || price*qty > maxNotional {
+		if ordParams.price*ordParams.qty < minNotional || ordParams.price*ordParams.qty > maxNotional {
 			err := errors.New("Min Notional filter not respected")
 			return err
 		}
 	} else {
-		if price*qty < minNotional {
+		if ordParams.price*ordParams.qty < minNotional {
 			err := errors.New("Min Notional filter not respected")
 			return err
 		}
