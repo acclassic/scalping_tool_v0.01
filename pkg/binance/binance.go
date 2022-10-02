@@ -379,11 +379,12 @@ func get_avg_price(ctx context.Context, symbol string) (float64, error) {
 }
 
 type OrderResp struct {
-	Symbol  string  `json:"symbol"`
-	Price   float64 `json:"price,string"`
-	Qty     float64 `json:"executedQty,string"`
-	Status  string  `json:"status"`
-	StratID int     `json:"strategyId"`
+	Symbol  string      `json:"symbol"`
+	Price   float64     `json:"price,string"`
+	Qty     float64     `json:"executedQty,string"`
+	Status  string      `json:"status"`
+	StratID int         `json:"strategyId"`
+	Fills   []OrderResp `json:"fills"`
 }
 
 func market_order(ctx context.Context, symbol string, side trdMarket, qty float64, stratId int) (*OrderResp, error) {
@@ -395,7 +396,7 @@ func market_order(ctx context.Context, symbol string, side trdMarket, qty float6
 		"symbol":           symbol,
 		"side":             string(side),
 		"type":             "MARKET",
-		"newOrderRespType": "RESULT",
+		"newOrderRespType": "FULL",
 		"strategyId":       fmt.Sprint(stratId),
 		"recvWindow":       "2000",
 	}
@@ -405,7 +406,7 @@ func market_order(ctx context.Context, symbol string, side trdMarket, qty float6
 	case SELL:
 		qParams["quantity"] = fmt.Sprint(qty)
 	}
-	req := create_httpReq(http.MethodPost, "/api/v3/order/test", qParams, true, weightOrder)
+	req := create_httpReq(http.MethodPost, "/api/v3/order", qParams, true, weightOrder)
 	resp, err := http_req_handler(ctx, req)
 	if err != nil {
 		return nil, err
@@ -415,8 +416,6 @@ func market_order(ctx context.Context, symbol string, side trdMarket, qty float6
 	if err != nil {
 		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to decode JSON from orderResp. %s", err)
 	}
-	//Write result to analytics file. No need to wait before return
-	go log.Add_analytics(order.StratID, order.Symbol, order.Price, order.Qty)
 	return &order, nil
 }
 
@@ -435,7 +434,7 @@ func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty 
 		"strategyId":       fmt.Sprint(stratId),
 		"recvWindow":       "2000",
 	}
-	req := create_httpReq(http.MethodPost, "/api/v3/order/test", qParams, true, weightOrder)
+	req := create_httpReq(http.MethodPost, "/api/v3/order", qParams, true, weightOrder)
 	resp, err := http_req_handler(ctx, req)
 	if err != nil {
 		return nil, err
@@ -445,8 +444,6 @@ func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty 
 	if err != nil {
 		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to decode JSON from orderResp. %s", err)
 	}
-	//Write result to analytics file. No need to wait before return
-	go log.Add_analytics(order.StratID, order.Symbol, order.Price, order.Qty)
 	return &order, nil
 }
 
@@ -548,7 +545,8 @@ func Exec_strat() {
 	set_trd_strat()
 	ctx := context.Background()
 	//Set ExInfos
-	exInfos, err := get_ex_info(ctx, trdStrategy.BuyMarket, trdStrategy.SellMarket, trdStrategy.ConvMarket)
+	exInfos, err := get_ex_info(ctx, trdStrategy.BuyMarket, trdStrategy.SellMarket, "BTCUSDT")
+	//exInfos, err := get_ex_info(ctx, trdStrategy.BuyMarket, trdStrategy.SellMarket, trdStrategy.ConvMarket)
 	if err != nil {
 		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to get exInfos. %s", err)
 	}

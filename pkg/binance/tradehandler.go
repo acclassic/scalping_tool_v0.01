@@ -118,7 +118,8 @@ func buy_order(ctx context.Context, trd *trdInfo) error {
 	ctx, cancel := context.WithCancel(ctx)
 	mPrice := buyMarketP.get_price()
 	var ordParams orderParams
-	ordParams.price = trdFunds.get_funds(trdStrategy.TrdRate)
+	ordParams.price = 150
+	//ordParams.price = trdFunds.get_funds(trdStrategy.TrdRate)
 	ordParams.qty = ordParams.price / mPrice
 
 	//Pass value and error chan then wait for value return. No need to check qtyCh because both values are needed to continue. If err occurs drop trd and trdCh.
@@ -144,6 +145,8 @@ func buy_order(ctx context.Context, trd *trdInfo) error {
 				err := errors.New("Order was rejected.")
 				return err
 			}
+			//Write result to analytics file. No need to wait before return
+			go log.Add_analytics(order.StratID, order.Symbol, order.Price, order.Qty)
 			trd.buyPrice = ordParams.price
 			trd.sellAmnt = order.Qty
 			return nil
@@ -188,7 +191,14 @@ func sell_order(ctx context.Context, trd *trdInfo) error {
 			err := errors.New("Order was rejected.")
 			return err
 		}
-		trd.convAmnt = order.Qty
+		//Sum amount of order
+		var convAmnt float64
+		for _, v := range order.Fills {
+			convAmnt = convAmnt + v.Price
+		}
+		trd.convAmnt = convAmnt
+		//Write result to analytics file. No need to wait before return.
+		go log.Add_analytics(order.StratID, order.Symbol, convAmnt, order.Qty)
 		return nil
 	case err := <-errCh:
 		cancel()
@@ -221,6 +231,13 @@ func conv_order(ctx context.Context, trd *trdInfo) error {
 		err := errors.New("Order was rejected.")
 		return err
 	}
+	//Sum amount of order
+	var convPrice float64
+	for _, v := range order.Fills {
+		convPrice = convPrice + v.Price
+	}
+	//Write result to analytics file. No need to wait before return.
+	go log.Add_analytics(order.StratID, order.Symbol, convPrice, order.Qty)
 	return nil
 }
 
@@ -247,8 +264,7 @@ func parse_price(ctx context.Context, errCh chan error, resultCh chan float64, o
 		}
 		multipDown := symbolsFilters[market]["PERCENT_PRICE"].MultipDown
 		mulipUp := symbolsFilters[market]["PERCENT_PRICE"].MultipUp
-		pcPrice := ordParams.price / ordParams.qty
-		if pcPrice < avgPrice*multipDown || pcPrice > avgPrice*mulipUp {
+		if ordParams.price < avgPrice*multipDown || ordParams.price > avgPrice*mulipUp {
 			err := errors.New("AvgPrice filter not respected.")
 			errCh <- err
 			return

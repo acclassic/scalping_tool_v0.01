@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -86,7 +87,10 @@ func http_req_handler(ctx context.Context, reqParams httpReq) (*http.Response, e
 	//Send resp to error_handler if not 200 or return value
 	if resp.StatusCode != 200 {
 		error_handler(ctx, resp)
-		err = fmt.Errorf("ERROR: HTTP response not 200. %s", resp.Status)
+		var respErr interface{}
+		json.NewDecoder(resp.Body).Decode(&respErr)
+		err = fmt.Errorf("ERROR: HTTP response not 200. %s. Body: %s.", resp.Status, respErr)
+		log.Sys_logger().Println(err)
 		return nil, err
 	} else {
 		return resp, nil
