@@ -33,6 +33,7 @@ type trdInfo struct {
 	buyPrice  float64
 	sellAmnt  float64
 	convAmnt  float64
+	stratId   int
 	reqWeight int
 	rawReqs   int
 	orders    int
@@ -61,6 +62,7 @@ func trd_handler(ctx context.Context) {
 					rawReqs:   5,
 					orders:    3,
 					buyPrice:  buyPrice,
+					stratId:   stratId.get_stratId(),
 				}
 				//Block limitsCtrs to ensure trd execution. Trd ctrs will be used to free exLimitsCtrs in case of an error.
 				exLimitsCtrs.reqWeight.decrease_counter(trd.reqWeight)
@@ -136,7 +138,7 @@ func buy_order(ctx context.Context, trd *trdInfo) error {
 			if err != nil {
 				return err
 			}
-			order, err := limit_order(ctx, trdStrategy.BuyMarket, BUY, price, qty, stratId.get_stratId())
+			order, err := limit_order(ctx, trdStrategy.BuyMarket, BUY, price, qty, trd.stratId)
 			update_trd_order(weightOrder, trd)
 			if err != nil {
 				return err
@@ -182,7 +184,7 @@ func sell_order(ctx context.Context, trd *trdInfo) error {
 		if err != nil {
 			return err
 		}
-		order, err := market_order(ctx, trdStrategy.SellMarket, SELL, qty, stratId.get_stratId())
+		order, err := market_order(ctx, trdStrategy.SellMarket, SELL, qty, trd.stratId)
 		update_trd_order(weightOrder, trd)
 		if err != nil {
 			return err
@@ -222,7 +224,7 @@ func conv_order(ctx context.Context, trd *trdInfo) error {
 	if err != nil {
 		return err
 	}
-	order, err := market_order(ctx, trdStrategy.ConvMarket, BUY, qty, stratId.get_stratId())
+	order, err := market_order(ctx, trdStrategy.ConvMarket, BUY, qty, trd.stratId)
 	update_trd_order(weightOrder, trd)
 	if err != nil {
 		return err
