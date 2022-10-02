@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"swap-trader/pkg/log"
 	"sync"
@@ -372,7 +373,8 @@ func get_avg_price(ctx context.Context, symbol string) (float64, error) {
 	if err != nil {
 		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to decode JSON from avgPrice. %s", err)
 	}
-	price := avgPrice["price"].(float64)
+	p := avgPrice["price"].(string)
+	price, _ := strconv.ParseFloat(p, 64)
 	return price, nil
 }
 
