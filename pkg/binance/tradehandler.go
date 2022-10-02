@@ -120,7 +120,7 @@ func buy_order(ctx context.Context, trd *trdInfo) error {
 	ctx, cancel := context.WithCancel(ctx)
 	mPrice := buyMarketP.get_price()
 	var ordParams orderParams
-	ordParams.price = 150
+	ordParams.price = 70
 	//ordParams.price = trdFunds.get_funds(trdStrategy.TrdRate)
 	ordParams.qty = ordParams.price / mPrice
 
@@ -404,14 +404,13 @@ func retry_order(ctx context.Context, n int, market trdMarket, trd *trdInfo) err
 func trd_signal() (bool, float64) {
 	//TODO evtl. include sync.Waitgroup and goroutine
 	buyPrice := buyMarketP.get_price()
-	//sellPrice := sellMarketP.get_price()
-	//convPrice := convMarketP.get_price()
-	return true, buyPrice
-	//if m := sellPrice/convPrice - buyPrice; m > 0 {
-	//	return true, buyPrice
-	//} else {
-	//	return false, 0
-	//}
+	sellPrice := sellMarketP.get_price()
+	convPrice := convMarketP.get_price()
+	if m := sellPrice/convPrice - buyPrice; m > 0 {
+		return true, buyPrice
+	} else {
+		return false, 0
+	}
 }
 
 func update_trd_req(weight int, trd *trdInfo) {

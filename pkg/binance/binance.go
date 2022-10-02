@@ -545,19 +545,17 @@ func Exec_strat() {
 	set_trd_strat()
 	ctx := context.Background()
 	//Set ExInfos
-	exInfos, err := get_ex_info(ctx, trdStrategy.BuyMarket, trdStrategy.SellMarket, "BTCUSDT")
-	//exInfos, err := get_ex_info(ctx, trdStrategy.BuyMarket, trdStrategy.SellMarket, trdStrategy.ConvMarket)
+	exInfos, err := get_ex_info(ctx, trdStrategy.BuyMarket, trdStrategy.SellMarket, trdStrategy.ConvMarket)
 	if err != nil {
 		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to get exInfos. %s", err)
 	}
 	set_symbols_filters(exInfos.Symbols)
 	set_rLimits(exInfos.RateLimits)
-	//TODO DEL
-	exLimitsCtrs.rawReq.count = 6100
 	//Add ctx value to update exLimitsCtrs
 	ctx = context.WithValue(ctx, ctxKey("reqWeight"), true)
 	//Set accFunds. No need to go over sync method because the value is initiated and not accessed concurrent.
-	funds, err := get_acc_funds(ctx, "USDT")
+	funds, err := get_acc_funds(ctx, "EUR")
+	fmt.Println(funds)
 	if err != nil {
 		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to get funds. %s", err)
 	}
@@ -571,4 +569,5 @@ func Exec_strat() {
 	wg.Wait()
 	//Start service handler
 	service_handler(ctx)
+
 }
