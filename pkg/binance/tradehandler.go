@@ -51,6 +51,7 @@ func trd_handler(ctx context.Context) {
 	for {
 		trdSignal, buyPrice := trd_signal()
 		if trdSignal == true {
+			go log.Strat_logger().Println(trdSignal, buyPrice)
 			select {
 			case trdCh <- true:
 				//Check if ctx status before starting trd

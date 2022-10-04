@@ -23,6 +23,8 @@ func get_path(path string) string {
 func Init_folder_struct() {
 	//Create log folder
 	os.Mkdir(get_path("logs"), 0750)
+	//Create analytics log folder
+	os.Mkdir(get_path("logs/analytics"), 0750)
 	//Create analytics folder
 	os.Mkdir(get_path("analytics"), 0750)
 }
