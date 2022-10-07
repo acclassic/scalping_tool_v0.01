@@ -119,11 +119,10 @@ func buy_order(ctx context.Context, trd *trdInfo) error {
 		return ctx.Err()
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	mPrice := buyMarketP.get_price()
 	var ordParams orderParams
 	ordParams.price = 70
 	//ordParams.price = trdFunds.get_funds(trdStrategy.TrdRate)
-	ordParams.qty = ordParams.price / mPrice
+	ordParams.qty = ordParams.price / trd.buyPrice * 0.75
 
 	//Pass value and error chan then wait for value return. No need to check qtyCh because both values are needed to continue. If err occurs drop trd and trdCh.
 	priceCh := make(chan float64)
