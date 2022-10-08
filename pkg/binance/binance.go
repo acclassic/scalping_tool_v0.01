@@ -430,7 +430,7 @@ func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty 
 		"timeInForce":      "IOC",
 		"price":            fmt.Sprint(price),
 		"quantity":         fmt.Sprint(qty),
-		"newOrderRespType": "RESULT",
+		"newOrderRespType": "FULL",
 		"strategyId":       fmt.Sprint(stratId),
 		"recvWindow":       "2000",
 	}

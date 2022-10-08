@@ -147,8 +147,13 @@ func buy_order(ctx context.Context, trd *trdInfo) error {
 				err := errors.New("Order was rejected.")
 				return err
 			}
+
+			if len(order.Fills) < 1 {
+				err := errors.New("Order was not filled")
+				return err
+			}
 			//Write result to analytics file. No need to wait before return
-			go log.Add_analytics(order.StratID, order.Symbol, order.Price, order.Qty)
+			log.Add_analytics(order.StratID, order.Symbol, order.Price, order.Qty)
 			trd.buyPrice = ordParams.price
 			trd.sellAmnt = order.Qty
 			return nil
@@ -200,7 +205,7 @@ func sell_order(ctx context.Context, trd *trdInfo) error {
 		}
 		trd.convAmnt = convAmnt
 		//Write result to analytics file. No need to wait before return.
-		go log.Add_analytics(order.StratID, order.Symbol, convAmnt, order.Qty)
+		log.Add_analytics(order.StratID, order.Symbol, convAmnt, order.Qty)
 		return nil
 	case err := <-errCh:
 		cancel()
@@ -239,7 +244,7 @@ func conv_order(ctx context.Context, trd *trdInfo) error {
 		convPrice = convPrice + v.Price
 	}
 	//Write result to analytics file. No need to wait before return.
-	go log.Add_analytics(order.StratID, order.Symbol, convPrice, order.Qty)
+	log.Add_analytics(order.StratID, order.Symbol, convPrice, order.Qty)
 	return nil
 }
 
