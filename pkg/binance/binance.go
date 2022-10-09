@@ -565,8 +565,6 @@ func set_trd_strat() {
 }
 
 func Exec_strat() {
-	fmt.Println("hallo")
-	return
 	//Create app folders
 	log.Init_folder_struct()
 	//Set Api Config
