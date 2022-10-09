@@ -243,7 +243,7 @@ func sell_order(ctx context.Context, trd *trdInfo) error {
 		}
 		trd.convAmnt = order.Qty
 		//Write result to analytics file. No need to wait before return.
-		log.Add_analytics(order.StratID, order.Symbol, convAmnt, order.Qty)
+		log.Add_analytics(order.StratID, order.Symbol, order.Price, order.Qty)
 		return nil
 	case err := <-errCh:
 		cancel()
@@ -279,15 +279,10 @@ func conv_order(ctx context.Context, trd *trdInfo) error {
 		err := errors.New("Order was rejected.")
 		return err
 	}
-	//Sum amount of order
-	var convPrice float64
-	for _, v := range order.Fills {
-		convPrice = convPrice + v.Price
-	}
 	//TODO delete this after testing
 	log.Strat_logger().Printf("Conv order: %+v", order)
 	//Write result to analytics file. No need to wait before return.
-	log.Add_analytics(order.StratID, order.Symbol, convPrice, order.Qty)
+	log.Add_analytics(order.StratID, order.Symbol, order.Price, order.Qty)
 	return nil
 }
 
