@@ -419,20 +419,19 @@ func market_order(ctx context.Context, symbol string, side trdMarket, qty float6
 	return &order, nil
 }
 
-func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty float64, stratId int) (*OrderResp, error) {
+func limit_order(ctx context.Context, symbol string, price float64, stratId int) (*OrderResp, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
+	//TODO test this
 	qParams := queryParams{
 		"symbol":           symbol,
-		"side":             string(side),
-		"type":             "LIMIT",
-		"timeInForce":      "IOC",
-		"price":            fmt.Sprint(price),
-		"quantity":         fmt.Sprint(qty),
+		"side":             "BUY",
+		"type":             "MARKET",
 		"newOrderRespType": "FULL",
 		"strategyId":       fmt.Sprint(stratId),
 		"recvWindow":       "2000",
+		"quoteOrderQty":    fmt.Sprint(price),
 	}
 	req := create_httpReq(http.MethodPost, "/api/v3/order", qParams, true, weightOrder)
 	resp, err := http_req_handler(ctx, req)
@@ -446,6 +445,34 @@ func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty 
 	}
 	return &order, nil
 }
+
+//func limit_order(ctx context.Context, symbol string, side trdMarket, price, qty float64, stratId int) (*OrderResp, error) {
+//	if ctx.Err() != nil {
+//		return nil, ctx.Err()
+//	}
+//	qParams := queryParams{
+//		"symbol":           symbol,
+//		"side":             string(side),
+//		"type":             "LIMIT",
+//		"timeInForce":      "IOC",
+//		"price":            fmt.Sprint(price),
+//		"quantity":         fmt.Sprint(qty),
+//		"newOrderRespType": "FULL",
+//		"strategyId":       fmt.Sprint(stratId),
+//		"recvWindow":       "2000",
+//	}
+//	req := create_httpReq(http.MethodPost, "/api/v3/order", qParams, true, weightOrder)
+//	resp, err := http_req_handler(ctx, req)
+//	if err != nil {
+//		return nil, err
+//	}
+//	var order OrderResp
+//	err = json.NewDecoder(resp.Body).Decode(&order)
+//	if err != nil {
+//		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to decode JSON from orderResp. %s", err)
+//	}
+//	return &order, nil
+//}
 
 type WsRequest struct {
 	Method string   `json:"method"`
