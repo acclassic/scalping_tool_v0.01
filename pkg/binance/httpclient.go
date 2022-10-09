@@ -89,7 +89,7 @@ func http_req_handler(ctx context.Context, reqParams httpReq) (*http.Response, e
 		error_handler(ctx, resp)
 		var respErr interface{}
 		json.NewDecoder(resp.Body).Decode(&respErr)
-		err = fmt.Errorf("ERROR: HTTP response not 200. %s. Body: %s.", resp.Status, respErr)
+		err = fmt.Errorf("ERROR: HTTP response not 200. %s. Body: %+v.", resp.Status, respErr)
 		log.Sys_logger().Println(err)
 		return nil, err
 	} else {

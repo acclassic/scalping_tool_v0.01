@@ -406,6 +406,7 @@ func market_order(ctx context.Context, symbol string, side trdMarket, qty float6
 	case SELL:
 		qParams["quantity"] = fmt.Sprint(qty)
 	}
+	log.Strat_logger().Printf("QParams: %+v", qParams)
 	req := create_httpReq(http.MethodPost, "/api/v3/order", qParams, true, weightOrder)
 	resp, err := http_req_handler(ctx, req)
 	if err != nil {
@@ -564,6 +565,8 @@ func set_trd_strat() {
 }
 
 func Exec_strat() {
+	fmt.Println("hallo")
+	return
 	//Create app folders
 	log.Init_folder_struct()
 	//Set Api Config

@@ -30,13 +30,15 @@ func (id *idCtr) get_stratId() int {
 }
 
 type trdInfo struct {
-	buyPrice  float64
-	sellAmnt  float64
-	convAmnt  float64
-	stratId   int
-	reqWeight int
-	rawReqs   int
-	orders    int
+	buyPrice     float64
+	sellAmnt     float64
+	sellAvgPrice float64
+	convAvgPrice float64
+	convAmnt     float64
+	stratId      int
+	reqWeight    int
+	rawReqs      int
+	orders       int
 }
 
 func trd_handler(ctx context.Context) {
@@ -77,7 +79,7 @@ func trd_handler(ctx context.Context) {
 				// If order can't be sold retry 3 times. If sold continue to conv_order or drop trd and free chan.
 				err = sell_order(ctx, &trd)
 				if err != nil {
-					err := retry_order(ctx, 3, SELL, &trd)
+					err := retry_order(ctx, SELL, &trd)
 					if err != nil {
 						unblock_limit_ctrs(&trd)
 						log.Strat_logger().Println(err)
@@ -88,7 +90,7 @@ func trd_handler(ctx context.Context) {
 				// If order can't be sold retry 3 times. If sold continue to log and end trd or drop trd and free chan.
 				err = conv_order(ctx, &trd)
 				if err != nil {
-					err := retry_order(ctx, 3, CONV, &trd)
+					err := retry_order(ctx, CONV, &trd)
 					if err != nil {
 						log.Strat_logger().Println(err)
 						<-trdCh
@@ -113,21 +115,21 @@ func buy_order(ctx context.Context, trd *trdInfo) error {
 		return ctx.Err()
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	price := 70
+	price := 70.0
 	//ordParams.price = trdFunds.get_funds(trdStrategy.TrdRate)
 	qty := price / trd.buyPrice * 0.75
 
 	//Pass value and error chan then wait for value return. No need to check qtyCh because both values are needed to continue. If err occurs drop trd and trdCh.
 	qtyCh := make(chan float64)
 	errCh := make(chan error)
-	go parse_market_qty(ctx, errCh, qtyCh, ordParams.price, trdStrategy.BuyMarket)
+	go parse_market_qty(ctx, errCh, qtyCh, qty, trdStrategy.BuyMarket)
 	select {
 	case qty := <-qtyCh:
-		err := parse_market_min_notional(ctx, ordParams.price, qty, trdStrategy.BuyMarket)
+		err := parse_market_min_notional(ctx, price, qty, trdStrategy.BuyMarket)
 		if err != nil {
 			return err
 		}
-		order, err := limit_order(ctx, trdStrategy.BuyMarket, ordParams.price, trd.stratId)
+		order, err := limit_order(ctx, trdStrategy.BuyMarket, price, trd.stratId)
 		update_trd_order(weightOrder, trd)
 		if err != nil {
 			return err
@@ -141,9 +143,11 @@ func buy_order(ctx context.Context, trd *trdInfo) error {
 			err := errors.New("Order was not filled")
 			return err
 		}
+		//TODO delete this after testing
+		log.Strat_logger().Printf("Buy order: %+v", order)
 		//Write result to analytics file. No need to wait before return
 		log.Add_analytics(order.StratID, order.Symbol, order.Price, order.Qty)
-		trd.buyPrice = ordParams.price
+		trd.buyPrice = price
 		trd.sellAmnt = order.Qty
 		return nil
 	case err := <-errCh:
@@ -218,14 +222,15 @@ func sell_order(ctx context.Context, trd *trdInfo) error {
 	go parse_market_qty(ctx, errCh, qtyCh, trd.sellAmnt, trdStrategy.SellMarket)
 	select {
 	case qty := <-qtyCh:
-		log.Strat_logger().Printf("Qty before avgPrice %f", qty)
-		price, err := get_avg_price(ctx, trdStrategy.SellMarket)
-		update_trd_req(weightAvgPrice, trd)
-		log.Strat_logger().Printf("Price after avgPrice %f", price)
-		if err != nil {
-			return err
+		if trd.sellAvgPrice == 0 {
+			price, err := get_avg_price(ctx, trdStrategy.SellMarket)
+			update_trd_req(weightAvgPrice, trd)
+			if err != nil {
+				return err
+			}
+			trd.sellAvgPrice = price
 		}
-		err = parse_market_min_notional(ctx, price, qty, trdStrategy.SellMarket)
+		err := parse_market_min_notional(ctx, trd.sellAvgPrice, qty, trdStrategy.SellMarket)
 		if err != nil {
 			return err
 		}
@@ -244,6 +249,8 @@ func sell_order(ctx context.Context, trd *trdInfo) error {
 			convAmnt = convAmnt + v.Price
 		}
 		trd.convAmnt = convAmnt
+		//TODO delete this after testing
+		log.Strat_logger().Printf("Sell order: %+v", order)
 		//Write result to analytics file. No need to wait before return.
 		log.Add_analytics(order.StratID, order.Symbol, convAmnt, order.Qty)
 		return nil
@@ -259,13 +266,16 @@ func conv_order(ctx context.Context, trd *trdInfo) error {
 	}
 	qty := trd.convAmnt
 
-	//No need to check price or lot filter because by using quoteOrderQty the lot filter is respected.
-	price, err := get_avg_price(ctx, trdStrategy.ConvMarket)
-	update_trd_req(weightAvgPrice, trd)
-	if err != nil {
-		return err
+	if trd.convAvgPrice == 0 {
+		//No need to check price or lot filter because by using quoteOrderQty the lot filter is respected.
+		price, err := get_avg_price(ctx, trdStrategy.ConvMarket)
+		update_trd_req(weightAvgPrice, trd)
+		if err != nil {
+			return err
+		}
+		trd.convAvgPrice = price
 	}
-	err = parse_market_min_notional(ctx, price, qty, trdStrategy.ConvMarket)
+	err := parse_market_min_notional(ctx, trd.convAvgPrice, qty, trdStrategy.ConvMarket)
 	if err != nil {
 		return err
 	}
@@ -283,6 +293,8 @@ func conv_order(ctx context.Context, trd *trdInfo) error {
 	for _, v := range order.Fills {
 		convPrice = convPrice + v.Price
 	}
+	//TODO delete this after testing
+	log.Strat_logger().Printf("Conv order: %+v", order)
 	//Write result to analytics file. No need to wait before return.
 	log.Add_analytics(order.StratID, order.Symbol, convPrice, order.Qty)
 	return nil
@@ -295,14 +307,14 @@ func parse_price(ctx context.Context, errCh chan error, resultCh chan float64, p
 		minPrice := symbolsFilters[market]["PRICE_FILTER"].MinPrice
 		maxPrice := symbolsFilters[market]["PRICE_FILTER"].MaxPrice
 		precision := symbolsFilters[market]["PRICE_FILTER"].lotPrc
-		if ordParams.price < minPrice || ordParams.price > maxPrice {
+		if price < minPrice || price > maxPrice {
 			err := errors.New("Price filter not respected.")
 			errCh <- err
 			return
 		}
 		if precision != 0 {
 			fmtCmd := fmt.Sprint("%.", precision, "f")
-			price, _ = strconv.ParseFloat(fmt.Sprintf(fmtCmd, ordParams.price), 64)
+			price, _ = strconv.ParseFloat(fmt.Sprintf(fmtCmd, price), 64)
 		}
 
 		//PERCENT_PRICE
@@ -313,7 +325,7 @@ func parse_price(ctx context.Context, errCh chan error, resultCh chan float64, p
 		}
 		multipDown := symbolsFilters[market]["PERCENT_PRICE"].MultipDown
 		mulipUp := symbolsFilters[market]["PERCENT_PRICE"].MultipUp
-		if ordParams.price < avgPrice*multipDown || ordParams.price > avgPrice*mulipUp {
+		if price < avgPrice*multipDown || price > avgPrice*mulipUp {
 			err := errors.New("AvgPrice filter not respected.")
 			errCh <- err
 			return
@@ -437,22 +449,22 @@ func parse_market_min_notional(ctx context.Context, price, qty float64, market s
 	return nil
 }
 
-func retry_order(ctx context.Context, n int, market trdMarket, trd *trdInfo) error {
+func retry_order(ctx context.Context, market trdMarket, trd *trdInfo) error {
 	ctx = context.WithValue(ctx, ctxKey("reqWeight"), true)
-	var err error
-	for i := 0; i < n; i++ {
+	for {
 		switch market {
 		case SELL:
-			err = sell_order(ctx, trd)
+			err := sell_order(ctx, trd)
+			if err == nil {
+				return nil
+			}
 		case CONV:
-			err = conv_order(ctx, trd)
-		}
-		if err == nil {
-			return nil
+			err := conv_order(ctx, trd)
+			if err == nil {
+				return nil
+			}
 		}
 	}
-	err = fmt.Errorf("Retried to execute order %d times failed. Order info: %s. Market: %s. Error: %s", n, trd, market, err)
-	return err
 }
 
 func trd_signal() (bool, float64) {
