@@ -143,8 +143,6 @@ func buy_order(ctx context.Context, trd *trdInfo) error {
 			err := errors.New("Order was not filled")
 			return err
 		}
-		//TODO delete this after testing
-		log.Strat_logger().Printf("Buy order: %+v", order)
 		//Write result to analytics file. No need to wait before return
 		log.Add_analytics(order.StratID, order.Symbol, order.Price, order.Qty)
 		trd.buyPrice = price
@@ -243,14 +241,7 @@ func sell_order(ctx context.Context, trd *trdInfo) error {
 			err := errors.New("Order was rejected.")
 			return err
 		}
-		//Sum amount of order
-		var convAmnt float64
-		for _, v := range order.Fills {
-			convAmnt = convAmnt + v.Price
-		}
-		trd.convAmnt = convAmnt
-		//TODO delete this after testing
-		log.Strat_logger().Printf("Sell order: %+v", order)
+		trd.convAmnt = order.Qty
 		//Write result to analytics file. No need to wait before return.
 		log.Add_analytics(order.StratID, order.Symbol, convAmnt, order.Qty)
 		return nil
