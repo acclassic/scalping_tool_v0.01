@@ -3,8 +3,9 @@ package binance
 import (
 	"context"
 	"errors"
-	"fmt"
+	"math"
 	"strconv"
+	"strings"
 	"swap-trader/pkg/log"
 	"sync"
 )
@@ -48,7 +49,6 @@ func trd_handler(ctx context.Context) {
 	for {
 		trdSignal, buyPrice := trd_signal()
 		if trdSignal == true {
-			go log.Strat_logger().Println(trdSignal, buyPrice)
 			select {
 			case trdCh <- true:
 				//Check if ctx status before starting trd
@@ -79,6 +79,7 @@ func trd_handler(ctx context.Context) {
 				// If order can't be sold retry 3 times. If sold continue to conv_order or drop trd and free chan.
 				err = sell_order(ctx, &trd)
 				if err != nil {
+					log.Strat_logger().Print(err)
 					err := retry_order(ctx, SELL, &trd)
 					if err != nil {
 						unblock_limit_ctrs(&trd)
@@ -90,6 +91,7 @@ func trd_handler(ctx context.Context) {
 				// If order can't be sold retry 3 times. If sold continue to log and end trd or drop trd and free chan.
 				err = conv_order(ctx, &trd)
 				if err != nil {
+					log.Strat_logger().Print(err)
 					err := retry_order(ctx, CONV, &trd)
 					if err != nil {
 						log.Strat_logger().Println(err)
@@ -143,10 +145,16 @@ func buy_order(ctx context.Context, trd *trdInfo) error {
 			err := errors.New("Order was not filled")
 			return err
 		}
-		//Write result to analytics file. No need to wait before return
-		log.Add_analytics(order.StratID, order.Symbol, order.Price, order.Qty)
-		trd.buyPrice = price
-		trd.sellAmnt = order.Qty
+		//Calc sellAmnt
+		var sellAmnt float64
+		for _, fill := range order.Fills {
+			sellAmnt = (fill.Qty - fill.Comm) + sellAmnt
+		}
+		//Write result to analytics file.
+		log.Add_analytics(order.StratID, order.Symbol, order.Price, sellAmnt)
+		//Update trd
+		trd.buyPrice = order.Price
+		trd.sellAmnt = sellAmnt
 		return nil
 	case err := <-errCh:
 		cancel()
@@ -241,9 +249,15 @@ func sell_order(ctx context.Context, trd *trdInfo) error {
 			err := errors.New("Order was rejected.")
 			return err
 		}
-		trd.convAmnt = order.Qty
-		//Write result to analytics file. No need to wait before return.
-		log.Add_analytics(order.StratID, order.Symbol, order.Price, order.Qty)
+		//Calc the convAmnt
+		var convAmnt float64
+		for _, fill := range order.Fills {
+			convAmnt = convAmnt + (fill.Price * fill.Qty)
+		}
+		//Write result to analytics file.
+		log.Add_analytics(order.StratID, order.Symbol, convAmnt, order.Qty)
+		//Update trd
+		trd.convAmnt = convAmnt
 		return nil
 	case err := <-errCh:
 		cancel()
@@ -279,8 +293,6 @@ func conv_order(ctx context.Context, trd *trdInfo) error {
 		err := errors.New("Order was rejected.")
 		return err
 	}
-	//TODO delete this after testing
-	log.Strat_logger().Printf("Conv order: %+v", order)
 	//Write result to analytics file. No need to wait before return.
 	log.Add_analytics(order.StratID, order.Symbol, order.Price, order.Qty)
 	return nil
@@ -299,8 +311,7 @@ func parse_price(ctx context.Context, errCh chan error, resultCh chan float64, p
 			return
 		}
 		if precision != 0 {
-			fmtCmd := fmt.Sprint("%.", precision, "f")
-			price, _ = strconv.ParseFloat(fmt.Sprintf(fmtCmd, price), 64)
+			price = round_down(price, precision)
 		}
 
 		//PERCENT_PRICE
@@ -341,8 +352,7 @@ func parse_qty(ctx context.Context, errCh chan error, resultCh chan float64, qty
 			return
 		}
 		if precision != 0 {
-			fmtCmd := fmt.Sprint("%.", precision, "f")
-			qty, _ = strconv.ParseFloat(fmt.Sprintf(fmtCmd, qty), 64)
+			qty = round_down(qty, precision)
 		}
 		doneCh <- qty
 	}()
@@ -368,8 +378,7 @@ func parse_market_qty(ctx context.Context, errCh chan error, resultCh chan float
 			return
 		}
 		if precision != 0 {
-			fmtCmd := fmt.Sprint("%.", precision, "f")
-			qty, _ = strconv.ParseFloat(fmt.Sprintf(fmtCmd, qty), 64)
+			qty = round_down(qty, precision)
 		}
 		doneCh <- qty
 	}()
@@ -378,7 +387,6 @@ func parse_market_qty(ctx context.Context, errCh chan error, resultCh chan float
 	case <-ctx.Done():
 		return
 	case qty := <-doneCh:
-		log.Sys_logger().Printf("Sending to resultCh: %f", qty)
 		resultCh <- qty
 		return
 	}
@@ -481,4 +489,15 @@ func unblock_limit_ctrs(trd *trdInfo) {
 	exLimitsCtrs.rawReq.increase_counter(trd.rawReqs)
 	exLimitsCtrs.orders.increase_counter(trd.orders)
 	exLimitsCtrs.maxOrders.increase_counter(trd.orders)
+}
+
+func round_down(n float64, precision int) float64 {
+	base := []string{"1"}
+	for i := 0; i < precision; i++ {
+		base = append(base, "0")
+	}
+	roundString := strings.Join(base, "")
+	roundDecimal, _ := strconv.Atoi(roundString)
+	roundedN := math.Floor(n*float64(roundDecimal)) / float64(roundDecimal)
+	return roundedN
 }

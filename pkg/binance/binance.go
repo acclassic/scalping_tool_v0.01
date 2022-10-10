@@ -379,12 +379,18 @@ func get_avg_price(ctx context.Context, symbol string) (float64, error) {
 }
 
 type OrderResp struct {
-	Symbol  string      `json:"symbol"`
-	Price   float64     `json:"price,string"`
-	Qty     float64     `json:"executedQty,string"`
-	Status  string      `json:"status"`
-	StratID int         `json:"strategyId"`
-	Fills   []OrderResp `json:"fills"`
+	Symbol  string       `json:"symbol"`
+	Price   float64      `json:"price,string"`
+	Qty     float64      `json:"executedQty,string"`
+	Status  string       `json:"status"`
+	StratID int          `json:"strategyId"`
+	Fills   []OrderFills `json:"fills"`
+}
+
+type OrderFills struct {
+	Price float64 `json:"price,string"`
+	Qty   float64 `json:"qty,string"`
+	Comm  float64 `json:"commission,string"`
 }
 
 func market_order(ctx context.Context, symbol string, side trdMarket, qty float64, stratId int) (*OrderResp, error) {
@@ -441,7 +447,7 @@ func limit_order(ctx context.Context, symbol string, price float64, stratId int)
 	var order OrderResp
 	err = json.NewDecoder(resp.Body).Decode(&order)
 	if err != nil {
-		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to decode JSON from orderResp. %s", err)
+		log.Sys_logger().Fatalf("WARNING: Execution stopped because unable to decode JSON from orderResp. %s\n", err)
 	}
 	return &order, nil
 }
