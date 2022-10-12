@@ -79,7 +79,8 @@ func trd_handler(ctx context.Context) {
 				// If order can't be sold retry 3 times. If sold continue to conv_order or drop trd and free chan.
 				err = sell_order(ctx, &trd)
 				if err != nil {
-					log.Strat_logger().Print(err)
+					log.Strat_logger().Fatalln(err)
+					//log.Strat_logger().Print(err)
 					err := retry_order(ctx, SELL, &trd)
 					if err != nil {
 						unblock_limit_ctrs(&trd)
@@ -91,7 +92,8 @@ func trd_handler(ctx context.Context) {
 				// If order can't be sold retry 3 times. If sold continue to log and end trd or drop trd and free chan.
 				err = conv_order(ctx, &trd)
 				if err != nil {
-					log.Strat_logger().Print(err)
+					log.Strat_logger().Fatalln(err)
+					//log.Strat_logger().Print(err)
 					err := retry_order(ctx, CONV, &trd)
 					if err != nil {
 						log.Strat_logger().Println(err)
@@ -116,9 +118,10 @@ func buy_order(ctx context.Context, trd *trdInfo) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	price := 70.0
+	price := 25.0
 	//ordParams.price = trdFunds.get_funds(trdStrategy.TrdRate)
-	qty := price / trd.buyPrice * 0.75
+	qty := price / trd.buyPrice
+	//qty := price / trd.buyPrice * 0.75
 
 	//Pass value and error chan then wait for value return. No need to check qtyCh because both values are needed to continue. If err occurs drop trd and trdCh.
 	qty, err := parse_market_qty(ctx, qty, trdStrategy.BuyMarket)
@@ -149,8 +152,14 @@ func buy_order(ctx context.Context, trd *trdInfo) error {
 		sellAmnt = (fill.Qty - fill.Comm) + sellAmnt
 	}
 
+	//Calc the price
+	var orderPrice float64
+	for _, fill := range order.Fills {
+		orderPrice = orderPrice + (fill.Price * fill.Qty)
+	}
+
 	//Write result to analytics file.
-	log.Add_analytics(order.StratID, order.Symbol, order.Price, sellAmnt)
+	log.Add_analytics(order.StratID, order.Symbol, orderPrice, sellAmnt)
 	//Update trd
 	trd.buyPrice = order.Price
 	trd.sellAmnt = sellAmnt
@@ -285,8 +294,14 @@ func conv_order(ctx context.Context, trd *trdInfo) error {
 		err := errors.New("Order was rejected.")
 		return err
 	}
+
+	//Calc the price
+	var orderPrice float64
+	for _, fill := range order.Fills {
+		orderPrice = orderPrice + (fill.Price * fill.Qty)
+	}
 	//Write result to analytics file. No need to wait before return.
-	log.Add_analytics(order.StratID, order.Symbol, order.Price, order.Qty)
+	log.Add_analytics(order.StratID, order.Symbol, orderPrice, order.Qty)
 	return nil
 }
 
