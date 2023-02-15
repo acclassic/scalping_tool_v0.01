@@ -286,10 +286,12 @@ func set_symbols_filters(marketsFilter []MarketEx) {
 
 func calc_precision(tickSize string) int {
 	i := 0
-	s := strings.SplitAfter(tickSize, ".")
+	s := strings.Split(tickSize, ".")
+	//Check if tickSize empty
 	if len(s) < 2 {
 		return 0
 	}
+	//Check if tickSize has decimals
 	for _, v := range s[1] {
 		i++
 		if v == '1' {

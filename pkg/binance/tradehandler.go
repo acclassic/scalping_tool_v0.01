@@ -79,7 +79,7 @@ func trd_handler(ctx context.Context) {
 				// If order can't be sold retry 3 times. If sold continue to conv_order or drop trd and free chan.
 				err = sell_order(ctx, &trd)
 				if err != nil {
-					log.Strat_logger().Fatalln(err)
+					log.Strat_logger().Fatal(err)
 					//log.Strat_logger().Print(err)
 					err := retry_order(ctx, SELL, &trd)
 					if err != nil {
@@ -92,7 +92,7 @@ func trd_handler(ctx context.Context) {
 				// If order can't be sold retry 3 times. If sold continue to log and end trd or drop trd and free chan.
 				err = conv_order(ctx, &trd)
 				if err != nil {
-					log.Strat_logger().Fatalln(err)
+					log.Strat_logger().Fatal(err)
 					//log.Strat_logger().Print(err)
 					err := retry_order(ctx, CONV, &trd)
 					if err != nil {
@@ -393,9 +393,7 @@ func parse_market_qty(ctx context.Context, qty float64, market string) (float64,
 		err := errors.New("Lot filter not respected.")
 		return 0, err
 	}
-	if precision != 0 {
-		qty = round_down(qty, precision)
-	}
+	qty = round_down(qty, precision)
 	return qty, nil
 }
 
@@ -499,6 +497,11 @@ func unblock_limit_ctrs(trd *trdInfo) {
 }
 
 func round_down(n float64, precision int) float64 {
+	//Check if n has do be rounded to decimals
+	if precision == 0 {
+		roundedN := math.Floor(n)
+		return roundedN
+	}
 	base := []string{"1"}
 	for i := 0; i < precision; i++ {
 		base = append(base, "0")
